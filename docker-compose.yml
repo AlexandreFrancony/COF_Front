@@ -1,0 +1,30 @@
+# COF - Frontend Docker Compose
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cof_front
+    restart: unless-stopped
+
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    name: cof_network
+    external: true
