@@ -6,6 +6,7 @@ import Campaigns from './pages/Campaigns';
 import CampaignDetail from './pages/CampaignDetail';
 import InviteAccept from './pages/InviteAccept';
 import CharacterSheet from './pages/CharacterSheet';
+import Board from './pages/Board';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -67,6 +68,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CharacterSheet />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/campaigns/:id/board"
+        element={
+          <ProtectedRoute>
+            <Board />
           </ProtectedRoute>
         }
       />

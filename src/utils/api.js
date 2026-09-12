@@ -94,3 +94,43 @@ export const getVoies = (params = {}) => {
   const query = new URLSearchParams(params).toString();
   return request(`/rules/voies${query ? `?${query}` : ''}`);
 };
+
+// ============================================================================
+// LIVE BOARD (phase 2)
+// ============================================================================
+
+export const getBoard = (campaignId) => request(`/campaigns/${campaignId}/board`);
+export const updateBoardBackground = (campaignId, backgroundUrl) =>
+  request(`/campaigns/${campaignId}/board`, {
+    method: 'PATCH',
+    body: JSON.stringify({ background_url: backgroundUrl }),
+  });
+export const createBoardToken = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
+export const updateBoardToken = (tokenId, data) =>
+  request(`/board/tokens/${tokenId}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteBoardToken = (tokenId) =>
+  request(`/board/tokens/${tokenId}`, { method: 'DELETE' });
+
+export async function uploadBoardImage(campaignId, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`${API_URL}/campaigns/${campaignId}/board/upload`, {
+    method: 'POST',
+    headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Échec de l\'envoi' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// EventSource can't set an Authorization header, so the token travels as a query param.
+export const getBoardStreamUrl = (campaignId) =>
+  `${API_URL}/campaigns/${campaignId}/board/stream?token=${encodeURIComponent(getToken() || '')}`;
