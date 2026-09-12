@@ -121,10 +121,11 @@ export const getVoies = (params = {}) => {
 // ============================================================================
 
 export const getBoard = (campaignId) => request(`/campaigns/${campaignId}/board`);
-export const updateBoardBackground = (campaignId, backgroundUrl) =>
+// data: { url, type } — type is 'image' or 'video' (a video plays fullscreen/looped for ambiance).
+export const updateBoardBackground = (campaignId, { url, type }) =>
   request(`/campaigns/${campaignId}/board`, {
     method: 'PATCH',
-    body: JSON.stringify({ background_url: backgroundUrl }),
+    body: JSON.stringify({ background_url: url, background_type: type }),
   });
 export const updateBoardGrid = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
@@ -165,6 +166,28 @@ export async function uploadBoardImage(campaignId, file) {
 // Lives outside /campaigns on purpose — see the comment in COF_Back/src/routes/board.js.
 export const getBoardStreamUrl = (campaignId) =>
   `${API_URL}/board-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
+
+// Reusable library of uploaded backgrounds (images + mp4 ambiance videos), shared across campaigns.
+export const getBoardMedia = () => request('/board-media');
+export const deleteBoardMedia = (mediaId) => request(`/board-media/${mediaId}`, { method: 'DELETE' });
+export async function uploadBoardMedia(file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_URL}/board-media`, {
+    method: 'POST',
+    headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Échec de l\'envoi' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
 
 // ============================================================================
 // SESSION HISTORY (phase 3)

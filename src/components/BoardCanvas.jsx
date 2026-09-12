@@ -105,6 +105,54 @@ function zoneShapeStyle(zone) {
   return base; // rectangle
 }
 
+// A filled bar with the numeric value written on top — used for PV/PM, which have a max.
+// Falls back to a plain chip (no fill) for a flat resource like Chance, which has none.
+function StatBar({ label, current, max, tone }) {
+  if (max == null) {
+    return (
+      <div className="flex items-center justify-between gap-2 text-[10px] leading-none">
+        <span className="opacity-70">{label}</span>
+        <span className="font-semibold">{current}</span>
+      </div>
+    );
+  }
+  const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
+  const barColor = tone === 'enemy' ? 'bg-red-500/70' : 'bg-[var(--accent)]';
+  return (
+    <div className="relative w-28 h-4 rounded bg-black/40 overflow-hidden">
+      <div className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: `${pct}%` }} />
+      <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[10px] font-semibold text-white drop-shadow">
+        <span>{label}</span>
+        <span>{current}/{max}</span>
+      </div>
+    </div>
+  );
+}
+
+function HudCard({ entry, tone }) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-black/55 backdrop-blur-sm text-white">
+      <div
+        className="w-8 h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center"
+        style={{
+          backgroundColor: entry.color || '#c65d3b',
+          backgroundImage: entry.image_url ? `url(${entry.image_url})` : undefined,
+        }}
+      />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] font-semibold leading-none">{entry.character_name || entry.label}</span>
+        <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} tone={tone} />
+        {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} tone={tone} />}
+        <div className="flex gap-2 text-[10px] opacity-80">
+          <span>Chance {entry.points_chance}</span>
+          <span>Déf {entry.defense}</span>
+          <span>Init {entry.initiative}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
   const { ref, handlePointerDown } = usePositionDrag(isGm, zone.x, zone.y, (x, y) => onDragEnd(zone.id, x, y));
 
@@ -129,10 +177,15 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
 }
 
 /**
- * Renders the board surface: background image, optional grid overlay, zones, tokens.
+ * Renders the board surface: background (image or looping muted video), optional grid
+ * overlay, zones, tokens, and two corner HUD overlays (hudPlayers top-left, hudEnemies
+ * top-right — each entry is a token enriched with its linked character's live stats).
  * isGm enables drag/select on tokens and zones; pass onSelectToken/onSelectZone as no-ops
- * (or omit) for a read-only view like the projector page.
- * className must include a position utility (relative/fixed/absolute) — the token/zone
+ * (or omit) for a read-only view like the projector page. hudEnemies must never be passed
+ * on a player-facing view (e.g. the projector) — the backend already strips a PNJ token's
+ * stats for a player-role fetch, but the projector reuses the GM's own session, so it's the
+ * caller's job to simply not forward enemy data there.
+ * className must include a position utility (relative/fixed/absolute) — the token/zone/hud
  * children are positioned against it. Not hardcoded here: Tailwind's generated stylesheet
  * order (not the HTML class order) decides which position utility wins when two are both
  * applied, so a hardcoded "relative" here could silently beat a caller's "fixed".
@@ -142,16 +195,29 @@ export default function BoardCanvas({
   selectedToken = null, onSelectToken = () => {}, onTokenDragEnd = () => {},
   selectedZone = null, onSelectZone = () => {}, onZoneDragEnd = () => {},
   onBackgroundClick = () => {},
+  hudPlayers = null, hudEnemies = null,
 }) {
+  const isVideo = board.background_type === 'video' && board.background_url;
   return (
     <div
       onClick={onBackgroundClick}
-      className={`overflow-hidden bg-cover bg-center ${className}`}
+      className={`overflow-hidden ${isVideo ? '' : 'bg-cover bg-center'} ${className}`}
       style={{
-        backgroundImage: board.background_url ? `url(${board.background_url})` : undefined,
+        backgroundImage: !isVideo && board.background_url ? `url(${board.background_url})` : undefined,
         ...style,
       }}
     >
+      {isVideo && (
+        <video
+          key={board.background_url}
+          src={board.background_url}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+      )}
       {!board.background_url && (
         <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
           Aucun fond défini
@@ -180,6 +246,16 @@ export default function BoardCanvas({
           onDragEnd={onTokenDragEnd}
         />
       ))}
+      {hudPlayers?.length > 0 && (
+        <div className="absolute top-2 left-2 z-20 flex flex-col gap-1.5 pointer-events-none">
+          {hudPlayers.map((entry) => <HudCard key={entry.id} entry={entry} />)}
+        </div>
+      )}
+      {hudEnemies?.length > 0 && (
+        <div className="absolute top-2 right-2 z-20 flex flex-col gap-1.5 items-end pointer-events-none">
+          {hudEnemies.map((entry) => <HudCard key={entry.id} entry={entry} tone="enemy" />)}
+        </div>
+      )}
     </div>
   );
 }

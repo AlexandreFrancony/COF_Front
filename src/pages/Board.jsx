@@ -7,6 +7,7 @@ import {
   getBoard, updateBoardBackground, updateBoardGrid, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
+  getBoardMedia, uploadBoardMedia, deleteBoardMedia,
 } from '../utils/api';
 
 const ZONE_SHAPES = [
@@ -15,23 +16,9 @@ const ZONE_SHAPES = [
   ['rectangle', 'Ligne / rectangle'],
 ];
 
-function CharacterHud({ character }) {
-  if (!character) return null;
-  return (
-    <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-wrap gap-4 text-sm">
-      <span className="font-semibold">{character.name}</span>
-      <span>PV {character.pv_current}/{character.pv_max}</span>
-      {character.pm_max > 0 && <span>PM {character.pm_current}/{character.pm_max}</span>}
-      <span>Chance {character.points_chance}</span>
-      <span>DEF {character.defense}</span>
-      <span>Init {character.initiative}</span>
-    </div>
-  );
-}
-
 export default function Board() {
   const { id: campaignId } = useParams();
-  const { isGm, user } = useAuth();
+  const { isGm } = useAuth();
   const [campaign, setCampaign] = useState(null);
   const [board, setBoard] = useState(null);
   const [characters, setCharacters] = useState([]);
@@ -39,6 +26,8 @@ export default function Board() {
   const [selectedZone, setSelectedZone] = useState(null);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [mediaLibrary, setMediaLibrary] = useState([]);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -58,6 +47,10 @@ export default function Board() {
   }, [campaignId]);
 
   useEffect(() => {
+    if (isGm) getBoardMedia().then(setMediaLibrary).catch(() => {});
+  }, [isGm]);
+
+  useEffect(() => {
     const source = new EventSource(getBoardStreamUrl(campaignId));
     source.addEventListener('board', (event) => setBoard(JSON.parse(event.data)));
     return () => source.close();
@@ -71,18 +64,39 @@ export default function Board() {
     }
   };
 
+  // Every upload lands in the shared library first (so it's reusable next time / in another
+  // campaign), then is immediately applied as this board's background.
   const handleBackgroundUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const { url } = await uploadBoardImage(campaignId, file);
-      setBoard(await updateBoardBackground(campaignId, url));
+      const media = await uploadBoardMedia(file);
+      setMediaLibrary((prev) => [media, ...prev]);
+      setBoard(await updateBoardBackground(campaignId, { url: media.url, type: media.type }));
     } catch (error) {
       toast.error(error.message);
     } finally {
       setUploading(false);
       e.target.value = '';
+    }
+  };
+
+  const handlePickMedia = async (media) => {
+    try {
+      setBoard(await updateBoardBackground(campaignId, { url: media.url, type: media.type }));
+      setShowLibrary(false);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteMedia = async (media) => {
+    try {
+      await deleteBoardMedia(media.id);
+      setMediaLibrary((prev) => prev.filter((m) => m.id !== media.id));
+    } catch (error) {
+      toast.error(error.message);
     }
   };
 
@@ -192,8 +206,12 @@ export default function Board() {
     );
   }
 
-  const myCharacter = !isGm ? characters.find((c) => c.user_id === user.id) : null;
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
+  // The HUD shows one card per token linked to a character — never for a free-floating pawn.
+  // Enemy stats are only ever assembled for the GM: the backend already strips a PNJ token's
+  // stats for a player-role fetch, this is the second layer that keeps them off-screen.
+  const hudPlayers = board.tokens.filter((t) => t.character_id && !t.is_npc);
+  const hudEnemies = isGm ? board.tokens.filter((t) => t.character_id && t.is_npc) : null;
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -214,14 +232,25 @@ export default function Board() {
         </a>
       </div>
 
-      {!isGm && <CharacterHud character={myCharacter} />}
-
       {isGm && (
         <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
           <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
-            {uploading ? 'Envoi...' : 'Changer le fond'}
-            <input type="file" accept="image/*" onChange={handleBackgroundUpload} className="hidden" disabled={uploading} />
+            {uploading ? 'Envoi...' : 'Envoyer un fond (image ou vidéo)'}
+            <input
+              type="file"
+              accept="image/*,video/mp4"
+              onChange={handleBackgroundUpload}
+              className="hidden"
+              disabled={uploading}
+            />
           </label>
+
+          <button
+            onClick={() => setShowLibrary((v) => !v)}
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            Bibliothèque ({mediaLibrary.length})
+          </button>
 
           <button
             onClick={handleToggleGrid}
@@ -271,12 +300,51 @@ export default function Board() {
         </div>
       )}
 
+      {isGm && showLibrary && (
+        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
+          <h3 className="font-semibold mb-2 text-sm">Bibliothèque de fonds</h3>
+          {mediaLibrary.length === 0 ? (
+            <p className="text-sm text-[var(--text-secondary)]">Aucun fond envoyé pour l'instant.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {mediaLibrary.map((media) => (
+                <div key={media.id} className="w-28 flex flex-col gap-1">
+                  <button
+                    onClick={() => handlePickMedia(media)}
+                    className="w-28 h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 flex items-center justify-center"
+                  >
+                    {media.type === 'video' ? (
+                      <video src={media.url} className="w-full h-full object-cover" muted />
+                    ) : (
+                      <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
+                    )}
+                  </button>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
+                      {media.type === 'video' ? '🎬 ' : '🖼 '}{media.label}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteMedia(media)}
+                      className="text-[10px] text-red-500 hover:underline shrink-0"
+                    >
+                      suppr.
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-4">
         <BoardCanvas
           board={board}
           isGm={isGm}
           className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
           style={{ aspectRatio: '16 / 9' }}
+          hudPlayers={hudPlayers}
+          hudEnemies={hudEnemies}
           selectedToken={selectedToken}
           onSelectToken={setSelectedToken}
           onTokenDragEnd={handleTokenDragEnd}
@@ -370,12 +438,6 @@ export default function Board() {
           </div>
         )}
       </div>
-
-      {isGm && characters.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {characters.map((c) => <CharacterHud key={c.id} character={c} />)}
-        </div>
-      )}
     </div>
   );
 }
