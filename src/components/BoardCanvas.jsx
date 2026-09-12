@@ -116,14 +116,17 @@ function StatBar({ label, current, max, tone }) {
       </div>
     );
   }
+  // Down/critical (<=0) is the single most urgent thing to spot at a glance during a fight —
+  // an empty bar alone reads the same as "no data", so it gets its own unmistakable state.
+  const isDown = current <= 0;
   const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
-  const barColor = tone === 'enemy' ? 'bg-red-500/70' : 'bg-[var(--accent)]';
+  const barColor = isDown ? 'bg-red-600' : tone === 'enemy' ? 'bg-red-500/70' : 'bg-[var(--accent)]';
   return (
-    <div className="relative w-28 h-4 rounded bg-black/40 overflow-hidden">
-      <div className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: `${pct}%` }} />
+    <div className={`relative w-28 h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
+      <div className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: isDown ? '100%' : `${pct}%` }} />
       <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[10px] font-semibold text-white drop-shadow">
         <span>{label}</span>
-        <span>{current}/{max}</span>
+        <span>{isDown ? 'K.O.' : `${current}/${max}`}</span>
       </div>
     </div>
   );
@@ -139,8 +142,10 @@ function HudCard({ entry, tone }) {
           backgroundImage: entry.image_url ? `url(${entry.image_url})` : undefined,
         }}
       />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] font-semibold leading-none">{entry.character_name || entry.label}</span>
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-[11px] font-semibold leading-none truncate max-w-[9rem]" title={entry.character_name || entry.label}>
+          {entry.character_name || entry.label}
+        </span>
         <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} tone={tone} />
         {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} tone={tone} />}
         <div className="flex gap-2 text-[10px] opacity-80">
@@ -246,13 +251,15 @@ export default function BoardCanvas({
           onDragEnd={onTokenDragEnd}
         />
       ))}
+      {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
+          silently clipping cards past the board's bottom edge when there are many characters. */}
       {hudPlayers?.length > 0 && (
-        <div className="absolute top-2 left-2 z-20 flex flex-col gap-1.5 pointer-events-none">
+        <div className="absolute top-2 left-2 bottom-2 z-20 flex flex-col flex-wrap content-start items-start gap-1.5 pointer-events-none">
           {hudPlayers.map((entry) => <HudCard key={entry.id} entry={entry} />)}
         </div>
       )}
       {hudEnemies?.length > 0 && (
-        <div className="absolute top-2 right-2 z-20 flex flex-col gap-1.5 items-end pointer-events-none">
+        <div className="absolute top-2 right-2 bottom-2 z-20 flex flex-col flex-wrap-reverse content-start items-end gap-1.5 pointer-events-none">
           {hudEnemies.map((entry) => <HudCard key={entry.id} entry={entry} tone="enemy" />)}
         </div>
       )}
