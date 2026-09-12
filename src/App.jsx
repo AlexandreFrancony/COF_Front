@@ -1,7 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import Layout from './components/Layout';
 import Login from './pages/Login';
-import Home from './pages/Home';
+import Campaigns from './pages/Campaigns';
+import CampaignDetail from './pages/CampaignDetail';
+import InviteAccept from './pages/InviteAccept';
+import CharacterSheet from './pages/CharacterSheet';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -18,14 +22,14 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return <Layout>{children}</Layout>;
 }
 
 function GuestRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) return null;
-  if (isAuthenticated) return <Navigate to="/" replace />;
+  if (isAuthenticated) return <Navigate to="/campaigns" replace />;
 
   return children;
 }
@@ -41,15 +45,33 @@ function AppRoutes() {
           </GuestRoute>
         }
       />
+      <Route path="/invites/:token" element={<InviteAccept />} />
       <Route
-        path="/"
+        path="/campaigns"
         element={
           <ProtectedRoute>
-            <Home />
+            <Campaigns />
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="/campaigns/:id"
+        element={
+          <ProtectedRoute>
+            <CampaignDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/characters/:id"
+        element={
+          <ProtectedRoute>
+            <CharacterSheet />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/" element={<Navigate to="/campaigns" replace />} />
+      <Route path="*" element={<Navigate to="/campaigns" replace />} />
     </Routes>
   );
 }

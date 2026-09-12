@@ -38,6 +38,12 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const refresh = useCallback(async () => {
+    const data = await getMe();
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const value = {
     user,
     loading,
@@ -45,6 +51,7 @@ export function AuthProvider({ children }) {
     isGm: user?.role === 'gm',
     login,
     logout,
+    refresh,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
