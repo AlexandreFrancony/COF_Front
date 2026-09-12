@@ -51,6 +51,7 @@ export default function CharacterSheet() {
   const [profilVoies, setProfilVoies] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
   const [selectedVoieIds, setSelectedVoieIds] = useState([]);
+  const [mageBonusVoieId, setMageBonusVoieId] = useState(null);
   const [equipement, setEquipement] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -165,7 +166,8 @@ export default function CharacterSheet() {
 
       const voiesToAdd = [...selectedVoieIds, ...(peupleVoie ? [peupleVoie.id] : [])];
       for (const voieId of voiesToAdd) {
-        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1, spend_points: false });
+        const rang = voieId === mageBonusVoieId ? 2 : 1;
+        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1, spend_points: false, rang });
       }
 
       setCharacter(await getCharacter(id));
@@ -363,11 +365,44 @@ export default function CharacterSheet() {
                   selectedVoieIds.includes(v.id) ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'
                 }`}
               >
-                <div className="font-medium">{v.name}</div>
-                <div className="text-xs text-[var(--text-secondary)]">{v.capacites[0]?.name} (rang 1)</div>
+                <div className="font-medium">
+                  {v.name}
+                  {v.capacites[0]?.est_sort && (
+                    <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>
+                  )}
+                </div>
+                <div className="text-xs text-[var(--text-secondary)] font-medium mt-1">
+                  {v.capacites[0]?.name}
+                </div>
+                <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  {v.capacites[0]?.description}
+                </div>
               </button>
             ))}
           </div>
+
+          {profil.famille_code === 'mages' && selectedVoieIds.length === 2 && (
+            <div className="border-t border-[var(--border)] pt-3">
+              <p className="text-sm mb-2">
+                Bonus mage : capacité de rang 2 gratuite dans l'une des deux voies choisies.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {selectedVoieIds.map((vid) => {
+                  const v = profilVoies.find((pv) => pv.id === vid);
+                  return (
+                    <button
+                      key={vid}
+                      onClick={() => setMageBonusVoieId(vid)}
+                      className={`px-2 py-1 rounded border text-sm ${mageBonusVoieId === vid ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                    >
+                      {v?.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <StepButton onClick={() => setStep(3)} primary={false}>Retour</StepButton>
             <StepButton onClick={() => setStep(5)} disabled={selectedVoieIds.length !== 2}>Suivant</StepButton>
