@@ -169,9 +169,11 @@ export default function Board() {
 
   const handleToggleZoneVisible = () => patchSelectedZone({ visible_to_players: !selectedZone.visible_to_players });
   const handleZoneColor = (e) => patchSelectedZone({ color: e.target.value });
-  const handleZoneSize = (delta) => patchSelectedZone({ size: Math.max(1, selectedZone.size + delta) });
-  const handleZoneWidth = (delta) => patchSelectedZone({ width: Math.max(1, selectedZone.width + delta) });
-  const handleZoneRotation = (delta) => patchSelectedZone({ rotation: (selectedZone.rotation + delta + 360) % 360 });
+  // Deltas, applied atomically server-side — a client-computed absolute value would drop
+  // clicks fired in quick succession, before the previous request's response updates selectedZone.
+  const handleZoneSize = (delta) => patchSelectedZone({ size_delta: delta });
+  const handleZoneWidth = (delta) => patchSelectedZone({ width_delta: delta });
+  const handleZoneRotation = (delta) => patchSelectedZone({ rotation_delta: delta });
 
   const handleDeleteZone = async () => {
     try {
