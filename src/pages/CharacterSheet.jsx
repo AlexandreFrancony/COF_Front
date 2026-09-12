@@ -605,7 +605,12 @@ function StepButtonInline({ onClick, disabled }) {
 
 function LevelUpPanel({ character, profilVoies, onRefresh }) {
   const [busy, setBusy] = useState(false);
+  const [customVoies, setCustomVoies] = useState([]);
   const points = character.capacity_points_available;
+
+  useEffect(() => {
+    getVoies({ type: 'custom' }).then(setCustomVoies).catch(() => {});
+  }, []);
 
   const run = async (action) => {
     setBusy(true);
@@ -634,6 +639,7 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
 
   const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id));
+  const unownedCustomVoies = customVoies.filter((v) => !ownedVoieIds.has(v.id));
 
   return (
     <Card className="flex flex-col gap-3 border-[var(--accent)]">
@@ -669,6 +675,24 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
                 className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
               >
                 {v.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {unownedCustomVoies.length > 0 && (
+        <div>
+          <p className="text-sm mb-1">Voie personnalisée (homebrew, rang 1, 1 point) :</p>
+          <div className="flex flex-wrap gap-2">
+            {unownedCustomVoies.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                disabled={busy}
+                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+              >
+                {v.name} ({v.origine_pj})
               </button>
             ))}
           </div>
