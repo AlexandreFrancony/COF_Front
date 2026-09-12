@@ -132,6 +132,10 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
  * Renders the board surface: background image, optional grid overlay, zones, tokens.
  * isGm enables drag/select on tokens and zones; pass onSelectToken/onSelectZone as no-ops
  * (or omit) for a read-only view like the projector page.
+ * className must include a position utility (relative/fixed/absolute) — the token/zone
+ * children are positioned against it. Not hardcoded here: Tailwind's generated stylesheet
+ * order (not the HTML class order) decides which position utility wins when two are both
+ * applied, so a hardcoded "relative" here could silently beat a caller's "fixed".
  */
 export default function BoardCanvas({
   board, isGm = false, className = '', style = {},
@@ -142,7 +146,7 @@ export default function BoardCanvas({
   return (
     <div
       onClick={onBackgroundClick}
-      className={`relative overflow-hidden bg-cover bg-center ${className}`}
+      className={`overflow-hidden bg-cover bg-center ${className}`}
       style={{
         backgroundImage: board.background_url ? `url(${board.background_url})` : undefined,
         ...style,

@@ -275,7 +275,7 @@ export default function Board() {
         <BoardCanvas
           board={board}
           isGm={isGm}
-          className="flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+          className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
           style={{ aspectRatio: '16 / 9' }}
           selectedToken={selectedToken}
           onSelectToken={setSelectedToken}
