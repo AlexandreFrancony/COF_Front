@@ -8,6 +8,14 @@ import {
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
+// mailto: needs no SMTP setup — it just opens the GM's own mail client with the message
+// pre-filled, ready to send.
+function mailtoInviteHref(characterName, campaignName, url) {
+  const subject = `Invitation à rejoindre ${campaignName}`;
+  const body = `Salut !\n\nTu es invité(e) à incarner ${characterName} dans la campagne ${campaignName}.\nClique sur ce lien pour rejoindre : ${url}`;
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export default function CampaignDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -58,8 +66,8 @@ export default function CampaignDetail() {
       const payload = inviteMode === 'existing'
         ? { character_id: inviteCharacterId }
         : { character_name: characterName };
-      const { invite_url } = await createInvite(id, payload);
-      setLastInviteUrl(invite_url);
+      const { invite_url, character } = await createInvite(id, payload);
+      setLastInviteUrl({ url: invite_url, characterName: character.name });
       setCharacterName('');
       setInviteCharacterId('');
       await load();
@@ -329,13 +337,21 @@ export default function CampaignDetail() {
 
             {lastInviteUrl && (
               <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] flex items-center justify-between gap-2 mb-3">
-                <code className="text-sm break-all">{lastInviteUrl}</code>
-                <button
-                  onClick={() => copyInvite(lastInviteUrl)}
-                  className="shrink-0 px-2 py-1 text-sm rounded bg-[var(--accent)] text-white"
-                >
-                  Copier
-                </button>
+                <code className="text-sm break-all">{lastInviteUrl.url}</code>
+                <span className="flex gap-2 shrink-0">
+                  <a
+                    href={mailtoInviteHref(lastInviteUrl.characterName, campaign.name, lastInviteUrl.url)}
+                    className="px-2 py-1 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                  >
+                    Par email
+                  </a>
+                  <button
+                    onClick={() => copyInvite(lastInviteUrl.url)}
+                    className="px-2 py-1 text-sm rounded bg-[var(--accent)] text-white"
+                  >
+                    Copier
+                  </button>
+                </span>
               </div>
             )}
 
@@ -351,6 +367,12 @@ export default function CampaignDetail() {
                     </span>
                     {inv.status === 'pending' && (
                       <span className="flex gap-2 shrink-0">
+                        <a
+                          href={mailtoInviteHref(inv.character_name, campaign.name, `${window.location.origin}/invites/${inv.token}`)}
+                          className="text-xs px-2 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                        >
+                          Par email
+                        </a>
                         <button
                           onClick={() => copyInvite(`${window.location.origin}/invites/${inv.token}`)}
                           className="text-xs px-2 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"

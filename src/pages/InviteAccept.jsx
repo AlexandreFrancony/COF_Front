@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 export default function InviteAccept() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const { refresh } = useAuth();
+  const { user, isAuthenticated, refresh } = useAuth();
   const [invite, setInvite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -24,12 +24,13 @@ export default function InviteAccept() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const claim = async (data) => {
     setSubmitting(true);
     try {
-      const data = await acceptInvite(token, { email, password, display_name: displayName });
-      setToken(data.token);
+      const result = await acceptInvite(token, data);
+      // Already logged in: the request carried our existing token and the server just
+      // echoes it back — no need to overwrite it, refresh() alone picks up the new character.
+      if (result.token) setToken(result.token);
       await refresh();
       toast.success('Bienvenue dans la campagne !');
       navigate('/');
@@ -38,6 +39,12 @@ export default function InviteAccept() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleClaimAsSelf = () => claim({});
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    claim({ email, password, display_name: displayName });
   };
 
   if (loading) {
@@ -64,6 +71,31 @@ export default function InviteAccept() {
     );
   }
 
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+        <div className="w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4 text-center">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--accent)]">Rejoindre {invite.campaign_name}</h1>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              Personnage : <strong>{invite.character_name}</strong>
+            </p>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Connecté en tant que <strong>{user.display_name}</strong> — ce personnage sera ajouté à ton compte.
+          </p>
+          <button
+            onClick={handleClaimAsSelf}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+          >
+            {submitting ? 'Ajout...' : `Rejoindre avec ${user.display_name}`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
       <form
@@ -77,12 +109,15 @@ export default function InviteAccept() {
           </p>
         </div>
 
+        <p className="text-xs text-[var(--text-secondary)] -mt-2">
+          Déjà un compte sur le site ? Entre son email et son mot de passe pour ajouter ce personnage à ta liste.
+        </p>
+
         <input
           type="text"
-          placeholder="Votre nom"
+          placeholder="Votre nom (si nouveau compte)"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          required
           className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
         />
         <input
@@ -95,11 +130,10 @@ export default function InviteAccept() {
         />
         <input
           type="password"
-          placeholder="Mot de passe (8 caractères min.)"
+          placeholder="Mot de passe"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          minLength={8}
           className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
         />
 
@@ -108,7 +142,7 @@ export default function InviteAccept() {
           disabled={submitting}
           className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
         >
-          {submitting ? 'Création du compte...' : 'Créer mon compte'}
+          {submitting ? 'Connexion...' : 'Rejoindre la campagne'}
         </button>
       </form>
     </div>
