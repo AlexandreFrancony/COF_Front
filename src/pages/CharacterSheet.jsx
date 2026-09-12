@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getCharacter, getProfils, getPeuples, getVoies,
-  updateCharacter, addCharacterVoie, raiseCharacterVoieRang,
+  updateCharacter, addCharacterVoie, raiseCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange,
 } from '../utils/api';
 
@@ -631,16 +631,52 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
     }
   };
 
+  // Changement d'orientation (p.42-43) : ne peut jamais descendre sous rang 1 une voie
+  // acquise gratuitement à la création — le reste peut toujours être oublié (rang le plus
+  // haut uniquement, ce qui empêche les trous dans une voie).
+  const forgets = character.forgets_available || 0;
+  const forgettableVoies = (character.voies || []).filter((v) => !(v.obtained_at_level === 1 && v.rang <= 1));
+
+  const forgetSection = forgets > 0 && (
+    <Card className="flex flex-col gap-2 border-[var(--accent)]">
+      <h2 className="font-semibold">
+        Changement d'orientation — {forgets} disponible{forgets > 1 ? 's' : ''}
+      </h2>
+      <p className="text-xs text-[var(--text-secondary)]">
+        Oublie le rang le plus haut d'une voie et récupère son coût en points de capacité.
+      </p>
+      {forgettableVoies.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {forgettableVoies.map((v) => (
+            <button
+              key={v.voie_id}
+              onClick={() => run(() => forgetCharacterVoie(character.id, v.voie_id))}
+              disabled={busy}
+              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+            >
+              Oublier {v.name} (rang {v.rang})
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--text-secondary)]">Aucune voie oubliable pour l'instant.</p>
+      )}
+    </Card>
+  );
+
   if (points === 0) {
     return (
-      <Card>
-        <StepButton
-          onClick={() => run(() => levelUpCharacter(character.id).then(() => toast.success('Niveau supérieur !')))}
-          disabled={busy}
-        >
-          Passer au niveau {character.level + 1}
-        </StepButton>
-      </Card>
+      <div className="flex flex-col gap-3">
+        {forgetSection}
+        <Card>
+          <StepButton
+            onClick={() => run(() => levelUpCharacter(character.id).then(() => toast.success('Niveau supérieur !')))}
+            disabled={busy}
+          >
+            Passer au niveau {character.level + 1}
+          </StepButton>
+        </Card>
+      </div>
     );
   }
 
@@ -664,10 +700,12 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
     : prestigeVoies.filter((v) => character.level >= v.niveau_prestige_requis);
 
   return (
-    <Card className="flex flex-col gap-3 border-[var(--accent)]">
-      <h2 className="font-semibold">
-        {points} point{points > 1 ? 's' : ''} de capacité à dépenser
-      </h2>
+    <div className="flex flex-col gap-3">
+      {forgetSection}
+      <Card className="flex flex-col gap-3 border-[var(--accent)]">
+        <h2 className="font-semibold">
+          {points} point{points > 1 ? 's' : ''} de capacité à dépenser
+        </h2>
 
       <div>
         <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
@@ -776,7 +814,8 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
           ))}
         </div>
       </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
 
