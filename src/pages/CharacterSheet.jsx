@@ -50,6 +50,7 @@ export default function CharacterSheet() {
   const [caracteristiques, setCaracteristiques] = useState(null);
   const [profilVoies, setProfilVoies] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
+  const [demiElfeChoices, setDemiElfeChoices] = useState(null);
   const [selectedVoieIds, setSelectedVoieIds] = useState([]);
   const [mageBonusVoieId, setMageBonusVoieId] = useState(null);
   const [equipement, setEquipement] = useState('');
@@ -138,7 +139,17 @@ export default function CharacterSheet() {
         getVoies({ peuple_id: peupleId, type: 'peuple' }),
       ]);
       setProfilVoies(pv);
-      setPeupleVoie(peV[0] || null);
+
+      if (peV.length > 0) {
+        setPeupleVoie(peV[0]);
+      } else if (peuple.code === 'demi-elfe') {
+        // Le demi-elfe n'a pas de voie de peuple dédiée (p.46) : il choisit
+        // entre celle de l'humain, de l'elfe haut ou de l'elfe sylvain.
+        const allPeupleVoies = await getVoies({ type: 'peuple' });
+        setDemiElfeChoices(
+          allPeupleVoies.filter((v) => ['peuple-humain', 'peuple-elfe-haut', 'peuple-elfe-sylvain'].includes(v.code))
+        );
+      }
       setStep(4);
     } catch (e) {
       toast.error(e.message);
@@ -356,6 +367,26 @@ export default function CharacterSheet() {
           <p className="text-sm text-[var(--text-secondary)]">
             Choisissez 2 des 5 voies de {profil.name}. Voie de peuple automatique : {peupleVoie?.name || '—'}.
           </p>
+
+          {demiElfeChoices && (
+            <div className="border-b border-[var(--border)] pb-3 mb-1">
+              <p className="text-sm mb-2">
+                Le demi-elfe n'a pas de voie dédiée — choisissez celle de l'humain, de l'elfe haut ou de l'elfe sylvain :
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {demiElfeChoices.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => setPeupleVoie(v)}
+                    className={`px-2 py-1 rounded border text-sm ${peupleVoie?.id === v.id ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                  >
+                    {v.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-2">
             {profilVoies.map((v) => (
               <button
@@ -405,7 +436,12 @@ export default function CharacterSheet() {
 
           <div className="flex gap-2">
             <StepButton onClick={() => setStep(3)} primary={false}>Retour</StepButton>
-            <StepButton onClick={() => setStep(5)} disabled={selectedVoieIds.length !== 2}>Suivant</StepButton>
+            <StepButton
+              onClick={() => setStep(5)}
+              disabled={selectedVoieIds.length !== 2 || (demiElfeChoices && !peupleVoie)}
+            >
+              Suivant
+            </StepButton>
           </div>
         </Card>
       )}
