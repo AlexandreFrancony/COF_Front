@@ -146,9 +146,9 @@ export default function CharacterSheet() {
       });
 
       const voiesToAdd = [...selectedVoieIds, ...(peupleVoie ? [peupleVoie.id] : [])];
-      await Promise.all(voiesToAdd.map((voieId) =>
-        addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1 })
-      ));
+      for (const voieId of voiesToAdd) {
+        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1 });
+      }
 
       const refreshed = await getCharacter(id);
       setCharacter({ ...updated, voies: refreshed.voies });
@@ -221,7 +221,9 @@ export default function CharacterSheet() {
   return (
     <div className="p-6 max-w-2xl mx-auto flex flex-col gap-4">
       <h1 className="text-2xl font-bold text-[var(--accent)]">Créer {character.name}</h1>
-      <p className="text-sm text-[var(--text-secondary)]">Étape {step + 1} / 5</p>
+      <p className="text-sm text-[var(--text-secondary)]">
+        Étape {{ 0: 1, 1: 2, 3: 3, 4: 4, 5: 5 }[step]} / 5
+      </p>
 
       {step === 0 && (
         <Card className="flex flex-col gap-3">
