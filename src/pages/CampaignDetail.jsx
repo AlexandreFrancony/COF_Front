@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  getCampaign, getCampaignCharacters, getCampaignInvites, createInvite,
+  getCampaign, getCampaignCharacters, getCampaignInvites, createInvite, revokeInvite,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -59,6 +59,16 @@ export default function CampaignDetail() {
   const copyInvite = (url) => {
     navigator.clipboard.writeText(url);
     toast.success('Lien copié');
+  };
+
+  const handleRevoke = async (inviteId) => {
+    try {
+      await revokeInvite(id, inviteId);
+      await load();
+      toast.success('Invitation révoquée');
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   if (loading || !campaign) {
@@ -147,13 +157,31 @@ export default function CampaignDetail() {
             )}
 
             {invites.length > 0 && (
-              <ul className="flex flex-col gap-1 text-sm text-[var(--text-secondary)]">
+              <ul className="flex flex-col gap-1.5 text-sm">
                 {invites.map((inv) => (
-                  <li key={inv.id}>
-                    {inv.character_name} —{' '}
-                    <span className={inv.status === 'accepted' ? 'text-[var(--positive)]' : 'text-[var(--warning)]'}>
-                      {inv.status === 'accepted' ? 'acceptée' : 'en attente'}
+                  <li key={inv.id} className="flex items-center justify-between gap-2 text-[var(--text-secondary)]">
+                    <span>
+                      {inv.character_name} —{' '}
+                      <span className={inv.status === 'accepted' ? 'text-[var(--positive)]' : 'text-[var(--warning)]'}>
+                        {inv.status === 'accepted' ? 'acceptée' : 'en attente'}
+                      </span>
                     </span>
+                    {inv.status === 'pending' && (
+                      <span className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => copyInvite(`${window.location.origin}/invites/${inv.token}`)}
+                          className="text-xs px-2 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                        >
+                          Copier
+                        </button>
+                        <button
+                          onClick={() => handleRevoke(inv.id)}
+                          className="text-xs px-2 py-0.5 rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+                        >
+                          Révoquer
+                        </button>
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

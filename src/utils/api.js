@@ -62,6 +62,8 @@ export const getCampaignInvites = (campaignId) =>
 export const getInvite = (token) => request(`/invites/${token}`);
 export const acceptInvite = (token, data) =>
   request(`/invites/${token}/accept`, { method: 'POST', body: JSON.stringify(data) });
+export const revokeInvite = (campaignId, inviteId) =>
+  request(`/campaigns/${campaignId}/invites/${inviteId}`, { method: 'DELETE' });
 
 // ============================================================================
 // CHARACTERS
