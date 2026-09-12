@@ -13,6 +13,18 @@ const CARAC_LABELS = {
   CHA: 'Charisme', INT: 'Intelligence', VOL: 'Volonté',
 };
 
+// Dés évolutifs (d4°) : d4 aux niveaux 1-5, puis +1 cran tous les 3 niveaux à partir de 6 (p.43).
+const DICE_PROGRESSION = ['d4', 'd6', 'd8', 'd10', 'd12'];
+function evolvingDieForLevel(level) {
+  if (level < 6) return DICE_PROGRESSION[0];
+  return DICE_PROGRESSION[Math.min(4, 1 + Math.floor((level - 6) / 3))];
+}
+function resolveEvolvingDice(text, level) {
+  if (!text) return text;
+  const die = evolvingDieForLevel(level);
+  return text.replace(/d4°/g, die);
+}
+
 function Card({ children, className = '' }) {
   return (
     <div className={`p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] ${className}`}>
@@ -243,11 +255,26 @@ export default function CharacterSheet() {
 
         <Card>
           <h2 className="font-semibold mb-2">Voies</h2>
-          <ul className="text-sm flex flex-col gap-1">
+          <div className="flex flex-col gap-4">
             {character.voies?.map((v) => (
-              <li key={v.voie_id}>{v.name} — rang {v.rang}</li>
+              <div key={v.voie_id}>
+                <div className="font-medium text-sm">{v.name} — rang {v.rang}</div>
+                <ul className="text-sm flex flex-col gap-1.5 mt-1">
+                  {v.capacites?.map((c) => (
+                    <li key={c.id}>
+                      <span className="font-medium">
+                        {c.name}
+                        {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
+                      </span>
+                      <span className="text-[var(--text-secondary)]">
+                        {' '}— {resolveEvolvingDice(c.description, character.level)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </Card>
 
         <LevelUpPanel character={character} profilVoies={profilVoies} onRefresh={refreshCharacter} />
