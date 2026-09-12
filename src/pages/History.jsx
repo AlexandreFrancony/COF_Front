@@ -6,7 +6,7 @@ import { getCampaign, getCampaignEvents, createEvent } from '../utils/api';
 
 const TYPE_LABELS = {
   pv_change: 'PV', pm_change: 'PM', voie_added: 'Voie', voie_rang_up: 'Voie',
-  level_up: 'Niveau', orphan_exchange: 'Point orphelin', note: 'Note',
+  voie_forgotten: 'Voie', level_up: 'Niveau', orphan_exchange: 'Point orphelin', note: 'Note',
 };
 
 function formatTimestamp(iso) {
