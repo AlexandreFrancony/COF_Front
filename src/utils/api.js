@@ -132,5 +132,6 @@ export async function uploadBoardImage(campaignId, file) {
 }
 
 // EventSource can't set an Authorization header, so the token travels as a query param.
+// Lives outside /campaigns on purpose — see the comment in COF_Back/src/routes/board.js.
 export const getBoardStreamUrl = (campaignId) =>
-  `${API_URL}/campaigns/${campaignId}/board/stream?token=${encodeURIComponent(getToken() || '')}`;
+  `${API_URL}/board-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
