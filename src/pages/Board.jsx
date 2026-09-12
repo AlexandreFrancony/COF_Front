@@ -1,85 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import BoardCanvas from '../components/BoardCanvas';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, uploadBoardImage, createBoardToken,
-  updateBoardToken, deleteBoardToken, getBoardStreamUrl,
-  getCampaign, getCampaignCharacters,
+  updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
+  getBoardStreamUrl, getCampaign, getCampaignCharacters,
 } from '../utils/api';
 
-// The board area is a fixed 16:9 rectangle; background-size percentages are relative to
-// width and height separately, so a horizontal cell needs a taller vertical percentage
-// (by the aspect ratio) to render as a visual square.
-const BOARD_ASPECT_RATIO = 16 / 9;
-function gridBackgroundStyle(gridSize) {
-  const cell = 100 / gridSize;
-  const cellV = cell * BOARD_ASPECT_RATIO;
-  return {
-    backgroundImage:
-      'linear-gradient(to right, rgba(0,0,0,.35) 1px, transparent 1px), ' +
-      'linear-gradient(to bottom, rgba(0,0,0,.35) 1px, transparent 1px)',
-    backgroundSize: `${cell}% ${cellV}%`,
-  };
-}
-
-function Token({ token, isGm, selected, onSelect, onDragEnd }) {
-  const ref = useRef(null);
-
-  const handlePointerDown = (e) => {
-    if (!isGm) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const container = ref.current.parentElement;
-    const rect = container.getBoundingClientRect();
-
-    const move = (ev) => {
-      const x = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
-      const y = Math.min(100, Math.max(0, ((ev.clientY - rect.top) / rect.height) * 100));
-      ref.current.style.left = `${x}%`;
-      ref.current.style.top = `${y}%`;
-      ref.current.dataset.x = x;
-      ref.current.dataset.y = y;
-    };
-
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      const x = parseFloat(ref.current.dataset.x ?? token.x);
-      const y = parseFloat(ref.current.dataset.y ?? token.y);
-      onDragEnd(token.id, x, y);
-    };
-
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-
-  return (
-    <div
-      ref={ref}
-      onPointerDown={handlePointerDown}
-      onClick={(e) => {
-        e.stopPropagation();
-        isGm && onSelect(token);
-      }}
-      className={`absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 ${isGm ? 'cursor-move' : ''}`}
-      style={{ left: `${token.x}%`, top: `${token.y}%` }}
-    >
-      <div
-        className={`w-10 h-10 rounded-full border-2 shadow-lg bg-cover bg-center ${
-          selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
-        } ${isGm && !token.visible_to_players ? 'opacity-40' : ''}`}
-        style={{
-          backgroundColor: token.color,
-          backgroundImage: token.image_url ? `url(${token.image_url})` : undefined,
-        }}
-      />
-      <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
-        {token.label}
-      </span>
-    </div>
-  );
-}
+const ZONE_SHAPES = [
+  ['circle', 'Cercle'],
+  ['cone', 'Cône'],
+  ['rectangle', 'Ligne / rectangle'],
+];
 
 function CharacterHud({ character }) {
   if (!character) return null;
@@ -102,6 +36,7 @@ export default function Board() {
   const [board, setBoard] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [selectedToken, setSelectedToken] = useState(null);
+  const [selectedZone, setSelectedZone] = useState(null);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [uploading, setUploading] = useState(false);
 
@@ -170,7 +105,7 @@ export default function Board() {
     }
   };
 
-  const handleDragEnd = async (tokenId, x, y) => {
+  const handleTokenDragEnd = async (tokenId, x, y) => {
     try {
       setBoard(await updateBoardToken(tokenId, { x, y }));
     } catch (error) {
@@ -178,7 +113,7 @@ export default function Board() {
     }
   };
 
-  const handleToggleVisible = async (token) => {
+  const handleToggleTokenVisible = async (token) => {
     try {
       setBoard(await updateBoardToken(token.id, { visible_to_players: !token.visible_to_players }));
       setSelectedToken(null);
@@ -205,6 +140,48 @@ export default function Board() {
     }
   };
 
+  const handleAddZone = async (shape) => {
+    try {
+      const created = await createBoardZone(campaignId, { shape });
+      setBoard(created);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleZoneDragEnd = async (zoneId, x, y) => {
+    try {
+      setBoard(await updateBoardZone(zoneId, { x, y }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const patchSelectedZone = async (data) => {
+    try {
+      const updated = await updateBoardZone(selectedZone.id, data);
+      setBoard(updated);
+      setSelectedZone(updated.zones.find((z) => z.id === selectedZone.id) || null);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleToggleZoneVisible = () => patchSelectedZone({ visible_to_players: !selectedZone.visible_to_players });
+  const handleZoneColor = (e) => patchSelectedZone({ color: e.target.value });
+  const handleZoneSize = (delta) => patchSelectedZone({ size: Math.max(1, selectedZone.size + delta) });
+  const handleZoneWidth = (delta) => patchSelectedZone({ width: Math.max(1, selectedZone.width + delta) });
+  const handleZoneRotation = (delta) => patchSelectedZone({ rotation: (selectedZone.rotation + delta + 360) % 360 });
+
+  const handleDeleteZone = async () => {
+    try {
+      setBoard(await deleteBoardZone(selectedZone.id));
+      setSelectedZone(null);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   if (!campaign || !board) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
@@ -218,11 +195,21 @@ export default function Board() {
 
   return (
     <div className="p-4 flex flex-col gap-4">
-      <div>
-        <Link to={`/campaigns/${campaignId}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
-          ← {campaign.name}
-        </Link>
-        <h1 className="text-xl font-bold text-[var(--accent)]">Plateau</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Link to={`/campaigns/${campaignId}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
+            ← {campaign.name}
+          </Link>
+          <h1 className="text-xl font-bold text-[var(--accent)]">Plateau</h1>
+        </div>
+        <a
+          href={`/campaigns/${campaignId}/board/projector`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
+        >
+          Mode projecteur ↗
+        </a>
       </div>
 
       {!isGm && <CharacterHud character={myCharacter} />}
@@ -267,37 +254,35 @@ export default function Board() {
               ))}
             </div>
           )}
+
+          <div className="flex gap-1">
+            {ZONE_SHAPES.map(([shape, label]) => (
+              <button
+                key={shape}
+                onClick={() => handleAddZone(shape)}
+                className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
+              >
+                + Zone : {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="flex flex-col lg:flex-row gap-4">
-        <div
-          onClick={() => setSelectedToken(null)}
-          className="relative flex-1 rounded-lg overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] bg-cover bg-center"
-          style={{
-            aspectRatio: '16 / 9',
-            backgroundImage: board.background_url ? `url(${board.background_url})` : undefined,
-          }}
-        >
-          {!board.background_url && (
-            <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
-              Aucun fond défini
-            </div>
-          )}
-          {board.grid_visible && (
-            <div className="absolute inset-0 pointer-events-none" style={gridBackgroundStyle(board.grid_size)} />
-          )}
-          {board.tokens.map((token) => (
-            <Token
-              key={token.id}
-              token={token}
-              isGm={isGm}
-              selected={selectedToken?.id === token.id}
-              onSelect={setSelectedToken}
-              onDragEnd={handleDragEnd}
-            />
-          ))}
-        </div>
+        <BoardCanvas
+          board={board}
+          isGm={isGm}
+          className="flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+          style={{ aspectRatio: '16 / 9' }}
+          selectedToken={selectedToken}
+          onSelectToken={setSelectedToken}
+          onTokenDragEnd={handleTokenDragEnd}
+          selectedZone={selectedZone}
+          onSelectZone={setSelectedZone}
+          onZoneDragEnd={handleZoneDragEnd}
+          onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); }}
+        />
 
         {isGm && selectedToken && (
           <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
@@ -314,7 +299,7 @@ export default function Board() {
             </label>
 
             <button
-              onClick={() => handleToggleVisible(selectedToken)}
+              onClick={() => handleToggleTokenVisible(selectedToken)}
               className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
             >
               {selectedToken.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
@@ -325,6 +310,60 @@ export default function Board() {
               className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
             >
               Supprimer le pion
+            </button>
+          </div>
+        )}
+
+        {isGm && selectedZone && (
+          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
+            <h3 className="font-semibold">
+              Zone — {ZONE_SHAPES.find(([s]) => s === selectedZone.shape)?.[1]}
+            </h3>
+
+            <label className="flex items-center justify-between text-sm">
+              Couleur
+              <input type="color" value={selectedZone.color} onChange={handleZoneColor} className="w-8 h-8 rounded border border-[var(--border)]" />
+            </label>
+
+            <div className="flex items-center justify-between text-sm">
+              <span>{selectedZone.shape === 'circle' ? 'Rayon' : 'Longueur'}</span>
+              <div className="flex gap-1">
+                <button onClick={() => handleZoneSize(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                <button onClick={() => handleZoneSize(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+              </div>
+            </div>
+
+            {selectedZone.shape !== 'circle' && (
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Largeur</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleZoneWidth(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                    <button onClick={() => handleZoneWidth(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Rotation</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleZoneRotation(-15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↺</button>
+                    <button onClick={() => handleZoneRotation(15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↻</button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={handleToggleZoneVisible}
+              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+            >
+              {selectedZone.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
+            </button>
+
+            <button
+              onClick={handleDeleteZone}
+              className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+            >
+              Supprimer la zone
             </button>
           </div>
         )}

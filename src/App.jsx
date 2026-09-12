@@ -7,6 +7,8 @@ import CampaignDetail from './pages/CampaignDetail';
 import InviteAccept from './pages/InviteAccept';
 import CharacterSheet from './pages/CharacterSheet';
 import Board from './pages/Board';
+import BoardProjector from './pages/BoardProjector';
+import History from './pages/History';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -24,6 +26,16 @@ function ProtectedRoute({ children }) {
   }
 
   return <Layout>{children}</Layout>;
+}
+
+// No Layout (no header) — the projector view is meant to fill a TV/vidéoprojecteur.
+function BareProtectedRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  return children;
 }
 
 function GuestRoute({ children }) {
@@ -76,6 +88,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Board />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/campaigns/:id/board/projector"
+        element={
+          <BareProtectedRoute>
+            <BoardProjector />
+          </BareProtectedRoute>
+        }
+      />
+      <Route
+        path="/campaigns/:id/history"
+        element={
+          <ProtectedRoute>
+            <History />
           </ProtectedRoute>
         }
       />

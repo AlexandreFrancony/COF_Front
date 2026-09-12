@@ -128,6 +128,13 @@ export const updateBoardToken = (tokenId, data) =>
 export const deleteBoardToken = (tokenId) =>
   request(`/board/tokens/${tokenId}`, { method: 'DELETE' });
 
+export const createBoardZone = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board/zones`, { method: 'POST', body: JSON.stringify(data) });
+export const updateBoardZone = (zoneId, data) =>
+  request(`/board/zones/${zoneId}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteBoardZone = (zoneId) =>
+  request(`/board/zones/${zoneId}`, { method: 'DELETE' });
+
 export async function uploadBoardImage(campaignId, file) {
   const token = getToken();
   const formData = new FormData();
@@ -151,3 +158,11 @@ export async function uploadBoardImage(campaignId, file) {
 // Lives outside /campaigns on purpose — see the comment in COF_Back/src/routes/board.js.
 export const getBoardStreamUrl = (campaignId) =>
   `${API_URL}/board-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
+
+// ============================================================================
+// SESSION HISTORY (phase 3)
+// ============================================================================
+
+export const getCampaignEvents = (campaignId) => request(`/campaigns/${campaignId}/events`);
+export const createEvent = (campaignId, message) =>
+  request(`/campaigns/${campaignId}/events`, { method: 'POST', body: JSON.stringify({ message }) });

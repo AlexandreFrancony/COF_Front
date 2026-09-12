@@ -121,12 +121,20 @@ export default function CampaignDetail() {
           </Link>
           <div className="flex items-center justify-between gap-3 mt-1">
             <h1 className="text-2xl font-bold text-[var(--accent)]">{campaign.name}</h1>
-            <Link
-              to={`/campaigns/${id}/board`}
-              className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-            >
-              Plateau
-            </Link>
+            <div className="flex gap-2 shrink-0">
+              <Link
+                to={`/campaigns/${id}/history`}
+                className="px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
+              >
+                Historique
+              </Link>
+              <Link
+                to={`/campaigns/${id}/board`}
+                className="px-3 py-1.5 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+              >
+                Plateau
+              </Link>
+            </div>
           </div>
           {campaign.description && (
             <p className="text-[var(--text-secondary)] mt-1">{campaign.description}</p>
