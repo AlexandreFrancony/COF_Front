@@ -297,7 +297,7 @@ export default function CharacterSheet() {
           </div>
         </Card>
 
-        <LevelUpPanel character={character} profilVoies={profilVoies} onRefresh={refreshCharacter} />
+        <LevelUpPanel character={character} profilVoies={profilVoies} profils={profils} onRefresh={refreshCharacter} />
       </div>
     );
   }
@@ -603,13 +603,15 @@ function StepButtonInline({ onClick, disabled }) {
   );
 }
 
-function LevelUpPanel({ character, profilVoies, onRefresh }) {
+function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [customVoies, setCustomVoies] = useState([]);
+  const [allProfilVoies, setAllProfilVoies] = useState([]);
   const points = character.capacity_points_available;
 
   useEffect(() => {
     getVoies({ type: 'custom' }).then(setCustomVoies).catch(() => {});
+    getVoies({ type: 'profil' }).then(setAllProfilVoies).catch(() => {});
   }, []);
 
   const run = async (action) => {
@@ -640,6 +642,15 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
   const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id));
   const unownedCustomVoies = customVoies.filter((v) => !ownedVoieIds.has(v.id));
+
+  // Profil hybride (p.176) : autorisé tant qu'il reste au moins une des 5 voies du profil
+  // principal jamais touchée. Le backend fait la vérification faisant foi ; ceci ne sert
+  // qu'à décider si la section doit s'afficher.
+  const ownProfilOwnedCount = (character.voies || []).filter((v) => profilVoies.some((pv) => pv.id === v.voie_id)).length;
+  const hybridAllowed = ownProfilOwnedCount < 5;
+  const hybridVoies = hybridAllowed
+    ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id)
+    : [];
 
   return (
     <Card className="flex flex-col gap-3 border-[var(--accent)]">
@@ -693,6 +704,26 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
                 className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
               >
                 {v.name} ({v.origine_pj})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hybridVoies.length > 0 && (
+        <div>
+          <p className="text-sm mb-1">
+            Profil hybride — voie hors profil principal (rang 1, 1 point) :
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {hybridVoies.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                disabled={busy}
+                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+              >
+                {v.name} ({profils.find((p) => p.id === v.profil_id)?.name})
               </button>
             ))}
           </div>
