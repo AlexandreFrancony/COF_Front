@@ -66,6 +66,18 @@ export const revokeInvite = (campaignId, inviteId) =>
   request(`/campaigns/${campaignId}/invites/${inviteId}`, { method: 'DELETE' });
 
 // ============================================================================
+// SCENARIOS (GM-only prep notes, phase 3)
+// ============================================================================
+
+export const getCampaignScenarios = (campaignId) => request(`/campaigns/${campaignId}/scenarios`);
+export const createScenario = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/scenarios`, { method: 'POST', body: JSON.stringify(data) });
+export const updateScenario = (scenarioId, data) =>
+  request(`/scenarios/${scenarioId}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteScenario = (scenarioId) =>
+  request(`/scenarios/${scenarioId}`, { method: 'DELETE' });
+
+// ============================================================================
 // CHARACTERS
 // ============================================================================
 

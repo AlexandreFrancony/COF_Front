@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getCampaign, getCampaignCharacters, getCampaignInvites, createInvite, revokeInvite,
+  getCampaignScenarios, createScenario, updateScenario, deleteScenario,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,10 +13,12 @@ export default function CampaignDetail() {
   const [campaign, setCampaign] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [characterName, setCharacterName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState(null);
+  const [scenarioName, setScenarioName] = useState('');
 
   const load = async () => {
     try {
@@ -27,6 +30,7 @@ export default function CampaignDetail() {
       setCharacters(charactersData);
       if (isGm) {
         setInvites(await getCampaignInvites(id));
+        setScenarios(await getCampaignScenarios(id));
       }
     } catch (error) {
       toast.error(error.message);
@@ -66,6 +70,35 @@ export default function CampaignDetail() {
       await revokeInvite(id, inviteId);
       await load();
       toast.success('Invitation révoquée');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleCreateScenario = async (e) => {
+    e.preventDefault();
+    try {
+      const created = await createScenario(id, { name: scenarioName });
+      setScenarios((prev) => [...prev, created]);
+      setScenarioName('');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleUpdateScenarioNotes = async (scenarioId, notes) => {
+    try {
+      const updated = await updateScenario(scenarioId, { notes });
+      setScenarios((prev) => prev.map((s) => (s.id === scenarioId ? updated : s)));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteScenario = async (scenarioId) => {
+    try {
+      await deleteScenario(scenarioId);
+      setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
     } catch (error) {
       toast.error(error.message);
     }
@@ -122,6 +155,41 @@ export default function CampaignDetail() {
             </ul>
           )}
         </section>
+
+        {isGm && (
+          <section>
+            <h2 className="font-semibold mb-2">Scénarios</h2>
+            <form onSubmit={handleCreateScenario} className="flex gap-2 mb-3">
+              <input
+                type="text"
+                placeholder="Nom du scénario"
+                value={scenarioName}
+                onChange={(e) => setScenarioName(e.target.value)}
+                required
+                className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+              >
+                Ajouter
+              </button>
+            </form>
+
+            {scenarios.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {scenarios.map((s) => (
+                  <ScenarioItem
+                    key={s.id}
+                    scenario={s}
+                    onSaveNotes={(notes) => handleUpdateScenarioNotes(s.id, notes)}
+                    onDelete={() => handleDeleteScenario(s.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {isGm && (
           <section>
@@ -189,6 +257,37 @@ export default function CampaignDetail() {
           </section>
         )}
       </div>
+    </div>
+  );
+}
+
+function ScenarioItem({ scenario, onSaveNotes, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState(scenario.notes || '');
+
+  return (
+    <div className="rounded-lg bg-[var(--bg-card)] border border-[var(--border)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <button onClick={() => setOpen((o) => !o)} className="font-medium text-left hover:text-[var(--accent)]">
+          {scenario.name}
+        </button>
+        <button
+          onClick={onDelete}
+          className="text-xs px-2 py-0.5 rounded border border-red-400 text-red-500 hover:bg-red-500/10 shrink-0"
+        >
+          Supprimer
+        </button>
+      </div>
+      {open && (
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => onSaveNotes(notes)}
+          placeholder="Notes de préparation..."
+          rows={4}
+          className="w-full mt-2 px-3 py-2 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+        />
+      )}
     </div>
   );
 }
