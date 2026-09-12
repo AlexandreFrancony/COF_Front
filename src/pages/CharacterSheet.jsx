@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getCharacter, getProfils, getPeuples, getVoies,
-  updateCharacter, addCharacterVoie,
+  updateCharacter, addCharacterVoie, raiseCharacterVoieRang,
+  levelUpCharacter, orphanExchange,
 } from '../utils/api';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
@@ -68,6 +69,23 @@ export default function CharacterSheet() {
 
   const profil = profils.find((p) => p.id === profilId);
   const peuple = peuples.find((p) => p.id === peupleId);
+
+  const refreshCharacter = async () => {
+    try {
+      setCharacter(await getCharacter(id));
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (character?.profil_id && character.pv_max > 0 && profilVoies.length === 0) {
+      getVoies({ profil_id: character.profil_id, type: 'profil' })
+        .then(setProfilVoies)
+        .catch((e) => toast.error(e.message));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [character]);
 
   // --- Step 2→3: initialize caracteristiques from the série rapide once a profil is chosen ---
   const goToCaracteristiques = () => {
@@ -147,7 +165,7 @@ export default function CharacterSheet() {
 
       const voiesToAdd = [...selectedVoieIds, ...(peupleVoie ? [peupleVoie.id] : [])];
       for (const voieId of voiesToAdd) {
-        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1 });
+        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1, spend_points: false });
       }
 
       const refreshed = await getCharacter(id);
@@ -213,6 +231,8 @@ export default function CharacterSheet() {
             ))}
           </ul>
         </Card>
+
+        <LevelUpPanel character={character} profilVoies={profilVoies} onRefresh={refreshCharacter} />
       </div>
     );
   }
@@ -426,5 +446,98 @@ function StepButtonInline({ onClick, disabled }) {
     >
       Valider et choisir les voies
     </button>
+  );
+}
+
+function LevelUpPanel({ character, profilVoies, onRefresh }) {
+  const [busy, setBusy] = useState(false);
+  const points = character.capacity_points_available;
+
+  const run = async (action) => {
+    setBusy(true);
+    try {
+      await action();
+      await onRefresh();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (points === 0) {
+    return (
+      <Card>
+        <StepButton
+          onClick={() => run(() => levelUpCharacter(character.id).then(() => toast.success('Niveau supérieur !')))}
+          disabled={busy}
+        >
+          Passer au niveau {character.level + 1}
+        </StepButton>
+      </Card>
+    );
+  }
+
+  const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
+  const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id));
+
+  return (
+    <Card className="flex flex-col gap-3 border-[var(--accent)]">
+      <h2 className="font-semibold">
+        {points} point{points > 1 ? 's' : ''} de capacité à dépenser
+      </h2>
+
+      <div>
+        <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
+        <div className="flex flex-wrap gap-2">
+          {(character.voies || []).map((v) => (
+            <button
+              key={v.voie_id}
+              onClick={() => run(() => raiseCharacterVoieRang(character.id, v.voie_id))}
+              disabled={busy}
+              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+            >
+              {v.name} (rang {v.rang} → {v.rang + 1})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {unownedProfilVoies.length > 0 && (
+        <div>
+          <p className="text-sm mb-1">Nouvelle voie de profil (rang 1, 1 point) :</p>
+          <div className="flex flex-wrap gap-2">
+            {unownedProfilVoies.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                disabled={busy}
+                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+              >
+                {v.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-sm mb-1">Point orphelin (si aucune capacité n'est accessible) :</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['pc', '+1 Chance'], ['dr', '+1 Récupération'], ['pv', '+2 PV'], ['pm', '+2 PM'],
+          ].map(([choice, label]) => (
+            <button
+              key={choice}
+              onClick={() => run(() => orphanExchange(character.id, choice))}
+              disabled={busy}
+              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 }
