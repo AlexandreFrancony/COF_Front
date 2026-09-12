@@ -610,11 +610,13 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [customVoies, setCustomVoies] = useState([]);
   const [allProfilVoies, setAllProfilVoies] = useState([]);
+  const [prestigeVoies, setPrestigeVoies] = useState([]);
   const points = character.capacity_points_available;
 
   useEffect(() => {
     getVoies({ type: 'custom' }).then(setCustomVoies).catch(() => {});
     getVoies({ type: 'profil' }).then(setAllProfilVoies).catch(() => {});
+    getVoies({ type: 'prestige' }).then(setPrestigeVoies).catch(() => {});
   }, []);
 
   const run = async (action) => {
@@ -654,6 +656,12 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   const hybridVoies = hybridAllowed
     ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id)
     : [];
+
+  // Voie de prestige (p.39) : une seule par carrière, ouverte à partir de niveau_prestige_requis.
+  const hasPrestigeVoie = (character.voies || []).some((v) => v.type === 'prestige');
+  const eligiblePrestigeVoies = hasPrestigeVoie
+    ? []
+    : prestigeVoies.filter((v) => character.level >= v.niveau_prestige_requis);
 
   return (
     <Card className="flex flex-col gap-3 border-[var(--accent)]">
@@ -727,6 +735,24 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
                 className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
               >
                 {v.name} ({profils.find((p) => p.id === v.profil_id)?.name})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {eligiblePrestigeVoies.length > 0 && (
+        <div>
+          <p className="text-sm mb-1">Voie de prestige — une seule par carrière (rang 4, 2 points) :</p>
+          <div className="flex flex-wrap gap-2">
+            {eligiblePrestigeVoies.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                disabled={busy}
+                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+              >
+                {v.name}
               </button>
             ))}
           </div>
