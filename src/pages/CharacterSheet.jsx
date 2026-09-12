@@ -155,7 +155,7 @@ export default function CharacterSheet() {
   const finalizeCreation = async () => {
     setSaving(true);
     try {
-      const updated = await updateCharacter(id, {
+      await updateCharacter(id, {
         profil_id: profilId,
         peuple_id: peupleId,
         level: 1,
@@ -168,8 +168,7 @@ export default function CharacterSheet() {
         await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1, spend_points: false });
       }
 
-      const refreshed = await getCharacter(id);
-      setCharacter({ ...updated, voies: refreshed.voies });
+      setCharacter(await getCharacter(id));
       toast.success('Personnage créé !');
     } catch (e) {
       toast.error(e.message);
