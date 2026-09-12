@@ -119,6 +119,8 @@ export const updateBoardBackground = (campaignId, backgroundUrl) =>
     method: 'PATCH',
     body: JSON.stringify({ background_url: backgroundUrl }),
   });
+export const updateBoardGrid = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
 export const createBoardToken = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
 export const updateBoardToken = (tokenId, data) =>

@@ -3,10 +3,25 @@ import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
-  getBoard, updateBoardBackground, uploadBoardImage, createBoardToken,
+  getBoard, updateBoardBackground, updateBoardGrid, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, getBoardStreamUrl,
   getCampaign, getCampaignCharacters,
 } from '../utils/api';
+
+// The board area is a fixed 16:9 rectangle; background-size percentages are relative to
+// width and height separately, so a horizontal cell needs a taller vertical percentage
+// (by the aspect ratio) to render as a visual square.
+const BOARD_ASPECT_RATIO = 16 / 9;
+function gridBackgroundStyle(gridSize) {
+  const cell = 100 / gridSize;
+  const cellV = cell * BOARD_ASPECT_RATIO;
+  return {
+    backgroundImage:
+      'linear-gradient(to right, rgba(0,0,0,.35) 1px, transparent 1px), ' +
+      'linear-gradient(to bottom, rgba(0,0,0,.35) 1px, transparent 1px)',
+    backgroundSize: `${cell}% ${cellV}%`,
+  };
+}
 
 function Token({ token, isGm, selected, onSelect, onDragEnd }) {
   const ref = useRef(null);
@@ -113,6 +128,14 @@ export default function Board() {
     return () => source.close();
   }, [campaignId]);
 
+  const handleToggleGrid = async () => {
+    try {
+      setBoard(await updateBoardGrid(campaignId, { grid_visible: !board.grid_visible }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleBackgroundUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -211,6 +234,13 @@ export default function Board() {
             <input type="file" accept="image/*" onChange={handleBackgroundUpload} className="hidden" disabled={uploading} />
           </label>
 
+          <button
+            onClick={handleToggleGrid}
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            {board.grid_visible ? 'Masquer la grille' : 'Afficher la grille'}
+          </button>
+
           <form onSubmit={handleAddToken} className="flex gap-2">
             <input
               type="text"
@@ -253,6 +283,9 @@ export default function Board() {
             <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
               Aucun fond défini
             </div>
+          )}
+          {board.grid_visible && (
+            <div className="absolute inset-0 pointer-events-none" style={gridBackgroundStyle(board.grid_size)} />
           )}
           {board.tokens.map((token) => (
             <Token
