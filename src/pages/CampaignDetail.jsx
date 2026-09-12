@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   getCampaign, getCampaignCharacters, getCampaignInvites, createInvite, revokeInvite,
   getCampaignScenarios, createScenario, updateScenario, deleteScenario,
+  createCharacter, deleteCharacter,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 export default function CampaignDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { isGm } = useAuth();
   const [campaign, setCampaign] = useState(null);
   const [characters, setCharacters] = useState([]);
@@ -19,6 +21,11 @@ export default function CampaignDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState(null);
   const [scenarioName, setScenarioName] = useState('');
+  const [newCharName, setNewCharName] = useState('');
+  const [newCharIsNpc, setNewCharIsNpc] = useState(false);
+  const [creatingChar, setCreatingChar] = useState(false);
+  const [inviteMode, setInviteMode] = useState('new'); // 'new' | 'existing'
+  const [inviteCharacterId, setInviteCharacterId] = useState('');
 
   const load = async () => {
     try {
@@ -48,15 +55,43 @@ export default function CampaignDetail() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const { invite_url } = await createInvite(id, { character_name: characterName });
+      const payload = inviteMode === 'existing'
+        ? { character_id: inviteCharacterId }
+        : { character_name: characterName };
+      const { invite_url } = await createInvite(id, payload);
       setLastInviteUrl(invite_url);
       setCharacterName('');
+      setInviteCharacterId('');
       await load();
       toast.success('Invitation créée');
     } catch (error) {
       toast.error(error.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreateCharacter = async (e) => {
+    e.preventDefault();
+    if (!newCharName.trim()) return;
+    setCreatingChar(true);
+    try {
+      const created = await createCharacter(id, { name: newCharName.trim(), is_npc: newCharIsNpc });
+      navigate(`/characters/${created.id}`);
+    } catch (error) {
+      toast.error(error.message);
+      setCreatingChar(false);
+    }
+  };
+
+  const handleDeleteCharacter = async (character) => {
+    if (!window.confirm(`Supprimer ${character.name} ? Cette action est définitive.`)) return;
+    try {
+      await deleteCharacter(character.id);
+      setCharacters((prev) => prev.filter((c) => c.id !== character.id));
+      toast.success('Personnage supprimé');
+    } catch (error) {
+      toast.error(error.message);
     }
   };
 
@@ -148,21 +183,59 @@ export default function CampaignDetail() {
           ) : (
             <ul className="flex flex-col gap-2">
               {characters.map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="flex items-center gap-2">
                   <Link
                     to={`/characters/${c.id}`}
-                    className="block p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                    className="flex-1 block p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
                   >
                     <span className="font-medium">{c.name}</span>
                     <span className="text-sm text-[var(--text-secondary)] ml-2">
-                      {c.user_id ? `Niveau ${c.level}` : 'En attente d\'un joueur'}
+                      {c.is_npc ? 'PNJ' : c.user_id ? `Niveau ${c.level}` : 'Pas encore invité'}
                     </span>
                   </Link>
+                  {isGm && (
+                    <button
+                      onClick={() => handleDeleteCharacter(c)}
+                      className="shrink-0 text-xs px-2 py-1 rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+                    >
+                      Supprimer
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </section>
+
+        {isGm && (
+          <section>
+            <h2 className="font-semibold mb-2">Créer un personnage</h2>
+            <p className="text-xs text-[var(--text-secondary)] mb-2">
+              Pour préparer un PJ à l'avance (à inviter ensuite) ou créer un PNJ que tu contrôles seul en combat.
+            </p>
+            <form onSubmit={handleCreateCharacter} className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                placeholder="Nom du personnage"
+                value={newCharName}
+                onChange={(e) => setNewCharName(e.target.value)}
+                required
+                className="flex-1 min-w-[160px] px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+              />
+              <label className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={newCharIsNpc} onChange={(e) => setNewCharIsNpc(e.target.checked)} />
+                PNJ
+              </label>
+              <button
+                type="submit"
+                disabled={creatingChar}
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+              >
+                Créer et construire la fiche
+              </button>
+            </form>
+          </section>
+        )}
 
         {isGm && (
           <section>
@@ -202,15 +275,49 @@ export default function CampaignDetail() {
         {isGm && (
           <section>
             <h2 className="font-semibold mb-2">Inviter un joueur</h2>
+
+            <div className="flex gap-2 mb-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setInviteMode('new')}
+                className={`px-2 py-1 rounded border ${inviteMode === 'new' ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+              >
+                Nouveau personnage
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteMode('existing')}
+                className={`px-2 py-1 rounded border ${inviteMode === 'existing' ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+              >
+                Personnage déjà créé
+              </button>
+            </div>
+
             <form onSubmit={handleCreateInvite} className="flex gap-2 mb-3">
-              <input
-                type="text"
-                placeholder="Nom du personnage"
-                value={characterName}
-                onChange={(e) => setCharacterName(e.target.value)}
-                required
-                className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
-              />
+              {inviteMode === 'existing' ? (
+                <select
+                  value={inviteCharacterId}
+                  onChange={(e) => setInviteCharacterId(e.target.value)}
+                  required
+                  className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+                >
+                  <option value="" disabled>Choisir un personnage...</option>
+                  {characters
+                    .filter((c) => !c.user_id && !c.is_npc && !invites.some((inv) => inv.character_id === c.id && inv.status === 'pending'))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Nom du personnage"
+                  value={characterName}
+                  onChange={(e) => setCharacterName(e.target.value)}
+                  required
+                  className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+                />
+              )}
               <button
                 type="submit"
                 disabled={submitting}

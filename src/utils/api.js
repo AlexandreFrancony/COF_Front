@@ -83,9 +83,12 @@ export const deleteScenario = (scenarioId) =>
 
 export const getCampaignCharacters = (campaignId) =>
   request(`/campaigns/${campaignId}/characters`);
+export const createCharacter = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/characters`, { method: 'POST', body: JSON.stringify(data) });
 export const getCharacter = (id) => request(`/characters/${id}`);
 export const updateCharacter = (id, data) =>
   request(`/characters/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteCharacter = (id) => request(`/characters/${id}`, { method: 'DELETE' });
 export const addCharacterVoie = (characterId, data) =>
   request(`/characters/${characterId}/voies`, { method: 'POST', body: JSON.stringify(data) });
 export const removeCharacterVoie = (characterId, voieId) =>

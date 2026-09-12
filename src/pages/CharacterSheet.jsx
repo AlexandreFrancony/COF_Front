@@ -229,7 +229,10 @@ export default function CharacterSheet() {
   if (character.profil_id && character.pv_max > 0) {
     return (
       <div className="p-6 max-w-2xl mx-auto flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-[var(--accent)]">{character.name}</h1>
+        <h1 className="text-2xl font-bold text-[var(--accent)]">
+          {character.name}
+          {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
+        </h1>
         <p className="text-[var(--text-secondary)]">
           Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
         </p>
