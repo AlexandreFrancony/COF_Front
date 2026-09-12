@@ -194,10 +194,16 @@ export default function CharacterSheet() {
           Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
         </p>
 
-        <Card className="grid grid-cols-3 sm:grid-cols-4 gap-3 text-center">
+        <Card className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <StatAdjuster
+            label="PV" current={character.pv_current} max={character.pv_max}
+            onChange={(v) => updateCharacter(id, { pv_current: v }).then(setCharacter)}
+          />
+          <StatAdjuster
+            label="PM" current={character.pm_current} max={character.pm_max}
+            onChange={(v) => updateCharacter(id, { pm_current: v }).then(setCharacter)}
+          />
           {[
-            ['PV', `${character.pv_current}/${character.pv_max}`],
-            ['PM', `${character.pm_current}/${character.pm_max}`],
             ['Chance', character.points_chance],
             ['DR', character.de_recuperation],
             ['Défense', character.defense],
@@ -538,5 +544,45 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
         </div>
       </div>
     </Card>
+  );
+}
+
+function StatAdjuster({ label, current, max, onChange }) {
+  const [busy, setBusy] = useState(false);
+
+  const adjust = async (delta) => {
+    const next = Math.max(0, Math.min(max, current + delta));
+    if (next === current) return;
+    setBusy(true);
+    try {
+      await onChange(next);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="text-xs text-[var(--text-secondary)]">{label}</div>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          onClick={() => adjust(-1)}
+          disabled={busy || current <= 0}
+          className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none"
+        >
+          −
+        </button>
+        <span className="font-bold text-lg w-14">{current}/{max}</span>
+        <button
+          onClick={() => adjust(1)}
+          disabled={busy || current >= max}
+          className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none"
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
