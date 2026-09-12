@@ -240,11 +240,11 @@ export default function CharacterSheet() {
         <Card className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
           <StatAdjuster
             label="PV" current={character.pv_current} max={character.pv_max}
-            onChange={(v) => updateCharacter(id, { pv_current: v }).then(setCharacter)}
+            onChange={(v) => updateCharacter(id, { pv_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
             label="PM" current={character.pm_current} max={character.pm_max}
-            onChange={(v) => updateCharacter(id, { pm_current: v }).then(setCharacter)}
+            onChange={(v) => updateCharacter(id, { pm_current: v }).then(refreshCharacter)}
           />
           {[
             ['Chance', character.points_chance],
