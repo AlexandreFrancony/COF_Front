@@ -158,6 +158,35 @@ function HudCard({ entry, tone }) {
   );
 }
 
+// The camera is a square window (in %, always camera_width tall too — see the schema comment
+// in board.js: the scene and the projector output share the same 16:9 ratio, so a window w%
+// wide is exactly w% tall, no BOARD_ASPECT_RATIO correction needed like board_zones' shapes).
+function CameraFrame({ board, selected, onSelect, onDragEnd }) {
+  const x = board.camera_x ?? 50;
+  const y = board.camera_y ?? 50;
+  const w = board.camera_width ?? 100;
+  const { ref, handlePointerDown } = usePositionDrag(true, x, y, onDragEnd);
+
+  return (
+    <div
+      ref={ref}
+      onPointerDown={handlePointerDown}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 cursor-move border-2 border-dashed ${
+        selected ? 'border-white' : 'border-white/60'
+      }`}
+      style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${w}%` }}
+    >
+      <span className="absolute -top-6 left-0 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white whitespace-nowrap">
+        🎥 Cadre projeté
+      </span>
+    </div>
+  );
+}
+
 function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
   const { ref, handlePointerDown } = usePositionDrag(isGm, zone.x, zone.y, (x, y) => onDragEnd(zone.id, x, y));
 
@@ -181,6 +210,25 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
   );
 }
 
+// Maps the scene's camera window ((camera_x, camera_y) center, camera_width wide/tall, all in
+// % of the full scene) onto a transform that crops+scales the scene to fill its container.
+// Derivation: scale S = 100/camera_width; with transform-origin at 0 0, `scale(S)` alone maps
+// a point at (x%, y%) to (S·x, S·y) in the same %-of-container units, then `translate(tx%, ty%)`
+// (itself resolved against the container's own, pre-scale size) shifts it to (S·x+tx, S·y+ty).
+// Solving for the camera's center to land at the container's center (50, 50) gives tx/ty below.
+function cameraCropStyle(board) {
+  const w = board.camera_width ?? 100;
+  const cx = board.camera_x ?? 50;
+  const cy = board.camera_y ?? 50;
+  const scale = 100 / w;
+  return {
+    position: 'absolute',
+    inset: 0,
+    transformOrigin: '0 0',
+    transform: `translate(${50 - scale * cx}%, ${50 - scale * cy}%) scale(${scale})`,
+  };
+}
+
 /**
  * Renders the board surface: background (image or looping muted video), optional grid
  * overlay, zones, tokens, and two corner HUD overlays (hudPlayers top-left, hudEnemies
@@ -190,6 +238,13 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
  * on a player-facing view (e.g. the projector) — the backend already strips a PNJ token's
  * stats for a player-role fetch, but the projector reuses the GM's own session, so it's the
  * caller's job to simply not forward enemy data there.
+ *
+ * Camera: the GM always sees the full scene (cameraCrop=false, the default) — showCameraFrame
+ * additionally draws the projected window as a draggable rectangle so the GM can see exactly
+ * what's framed while working on the rest of the map. The projector instead passes
+ * cameraCrop=true, which crops+scales the whole scene (background/grid/zones/tokens, NOT the
+ * HUD or the frame itself) down to just that window filling the screen.
+ *
  * className must include a position utility (relative/fixed/absolute) — the token/zone/hud
  * children are positioned against it. Not hardcoded here: Tailwind's generated stylesheet
  * order (not the HTML class order) decides which position utility wins when two are both
@@ -201,56 +256,66 @@ export default function BoardCanvas({
   selectedZone = null, onSelectZone = () => {}, onZoneDragEnd = () => {},
   onBackgroundClick = () => {},
   hudPlayers = null, hudEnemies = null,
+  cameraCrop = false,
+  showCameraFrame = false, cameraSelected = false, onSelectCamera = () => {}, onCameraDragEnd = () => {},
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
+  const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
+
   return (
-    <div
-      onClick={onBackgroundClick}
-      className={`overflow-hidden ${isVideo ? '' : 'bg-cover bg-center'} ${className}`}
-      style={{
-        backgroundImage: !isVideo && board.background_url ? `url(${board.background_url})` : undefined,
-        ...style,
-      }}
-    >
-      {isVideo && (
-        <video
-          key={board.background_url}
-          src={board.background_url}
-          className="absolute inset-0 w-full h-full object-cover"
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
+    <div onClick={onBackgroundClick} className={`overflow-hidden ${className}`} style={style}>
+      <div
+        className={isVideo ? '' : 'bg-cover bg-center'}
+        style={{
+          ...sceneStyle,
+          backgroundImage: !isVideo && board.background_url ? `url(${board.background_url})` : undefined,
+        }}
+      >
+        {isVideo && (
+          <video
+            key={board.background_url}
+            src={board.background_url}
+            className="absolute inset-0 w-full h-full object-cover"
+            autoPlay
+            loop
+            muted
+            playsInline
+          />
+        )}
+        {!board.background_url && (
+          <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
+            Aucun fond défini
+          </div>
+        )}
+        {board.grid_visible && (
+          <div className="absolute inset-0 pointer-events-none" style={gridBackgroundStyle(board.grid_size)} />
+        )}
+        {(board.zones || []).map((zone) => (
+          <Zone
+            key={zone.id}
+            zone={zone}
+            isGm={isGm}
+            selected={selectedZone?.id === zone.id}
+            onSelect={onSelectZone}
+            onDragEnd={onZoneDragEnd}
+          />
+        ))}
+        {board.tokens.map((token) => (
+          <Token
+            key={token.id}
+            token={token}
+            isGm={isGm}
+            selected={selectedToken?.id === token.id}
+            onSelect={onSelectToken}
+            onDragEnd={onTokenDragEnd}
+          />
+        ))}
+      </div>
+
+      {showCameraFrame && (
+        <CameraFrame board={board} selected={cameraSelected} onSelect={onSelectCamera} onDragEnd={onCameraDragEnd} />
       )}
-      {!board.background_url && (
-        <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
-          Aucun fond défini
-        </div>
-      )}
-      {board.grid_visible && (
-        <div className="absolute inset-0 pointer-events-none" style={gridBackgroundStyle(board.grid_size)} />
-      )}
-      {(board.zones || []).map((zone) => (
-        <Zone
-          key={zone.id}
-          zone={zone}
-          isGm={isGm}
-          selected={selectedZone?.id === zone.id}
-          onSelect={onSelectZone}
-          onDragEnd={onZoneDragEnd}
-        />
-      ))}
-      {board.tokens.map((token) => (
-        <Token
-          key={token.id}
-          token={token}
-          isGm={isGm}
-          selected={selectedToken?.id === token.id}
-          onSelect={onSelectToken}
-          onDragEnd={onTokenDragEnd}
-        />
-      ))}
+
       {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
           silently clipping cards past the board's bottom edge when there are many characters. */}
       {hudPlayers?.length > 0 && (

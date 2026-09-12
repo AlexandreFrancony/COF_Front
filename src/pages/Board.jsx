@@ -7,7 +7,7 @@ import {
   getBoard, updateBoardBackground, updateBoardGrid, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
-  getBoardMedia, uploadBoardMedia, deleteBoardMedia,
+  getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera,
 } from '../utils/api';
 
 const ZONE_SHAPES = [
@@ -24,6 +24,7 @@ export default function Board() {
   const [characters, setCharacters] = useState([]);
   const [selectedToken, setSelectedToken] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [cameraSelected, setCameraSelected] = useState(false);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [uploading, setUploading] = useState(false);
   const [mediaLibrary, setMediaLibrary] = useState([]);
@@ -198,6 +199,34 @@ export default function Board() {
     }
   };
 
+  // The camera is what the projector actually shows — the GM's own view always renders the
+  // full scene, this frame is just an overlay preview of that window. Dragging sends the
+  // final center directly (like tokens/zones); zoom is a server-side atomic delta (same
+  // reasoning as board_zones' size_delta — see the PATCH /board docstring in board.js).
+  const handleCameraDragEnd = async (x, y) => {
+    try {
+      setBoard(await updateBoardCamera(campaignId, { camera_x: x, camera_y: y }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleCameraZoom = async (delta) => {
+    try {
+      setBoard(await updateBoardCamera(campaignId, { camera_width_delta: delta }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleCameraReset = async () => {
+    try {
+      setBoard(await updateBoardCamera(campaignId, { camera_x: 50, camera_y: 50, camera_width: 100 }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   if (!campaign || !board) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
@@ -346,13 +375,41 @@ export default function Board() {
           hudPlayers={hudPlayers}
           hudEnemies={hudEnemies}
           selectedToken={selectedToken}
-          onSelectToken={setSelectedToken}
+          onSelectToken={(token) => { setCameraSelected(false); setSelectedZone(null); setSelectedToken(token); }}
           onTokenDragEnd={handleTokenDragEnd}
           selectedZone={selectedZone}
-          onSelectZone={setSelectedZone}
+          onSelectZone={(zone) => { setCameraSelected(false); setSelectedToken(null); setSelectedZone(zone); }}
           onZoneDragEnd={handleZoneDragEnd}
-          onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); }}
+          showCameraFrame={isGm}
+          cameraSelected={cameraSelected}
+          onSelectCamera={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(true); }}
+          onCameraDragEnd={handleCameraDragEnd}
+          onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(false); }}
         />
+
+        {isGm && cameraSelected && (
+          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
+            <h3 className="font-semibold">🎥 Cadre projeté</h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Ce que les joueurs voient sur le mode projecteur. Fais glisser le cadre sur le plateau pour le déplacer.
+            </p>
+
+            <div className="flex items-center justify-between text-sm">
+              <span>Zoom</span>
+              <div className="flex gap-1">
+                <button onClick={() => handleCameraZoom(10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                <button onClick={() => handleCameraZoom(-10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCameraReset}
+              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+            >
+              Recentrer sur tout le plateau
+            </button>
+          </div>
+        )}
 
         {isGm && selectedToken && (
           <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">

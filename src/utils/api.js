@@ -129,6 +129,9 @@ export const updateBoardBackground = (campaignId, { url, type }) =>
   });
 export const updateBoardGrid = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
+// data: { camera_x, camera_y } on drag-end, or { camera_width_delta } on a zoom +/- click.
+export const updateBoardCamera = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
 export const createBoardToken = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
 export const updateBoardToken = (tokenId, data) =>

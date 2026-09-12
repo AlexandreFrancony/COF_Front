@@ -17,7 +17,9 @@ function playerSafeBoard(board) {
 
 // Fullscreen, read-only board — meant to be cast to a TV or vidéoprojecteur during a session.
 // No header, no controls: just the background, grid, zones, visible tokens, and the party's
-// HUD (never the enemies' — see playerSafeBoard above).
+// HUD (never the enemies' — see playerSafeBoard above). cameraCrop makes it show only the
+// GM's chosen window of the scene (board.camera_x/y/width), not the full map — the GM's own
+// Board.jsx view is unaffected and always shows everything.
 export default function BoardProjector() {
   const { id: campaignId } = useParams();
   const [board, setBoard] = useState(null);
@@ -44,6 +46,7 @@ export default function BoardProjector() {
       className="fixed inset-0"
       style={{ backgroundColor: 'black' }}
       hudPlayers={hudPlayers}
+      cameraCrop
     />
   );
 }
