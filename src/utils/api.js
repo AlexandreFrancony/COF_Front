@@ -97,6 +97,8 @@ export const forgetCharacterVoie = (characterId, voieId) =>
   request(`/characters/${characterId}/voies/${voieId}/forget`, { method: 'POST' });
 export const raiseCharacterVoieRang = (characterId, voieId) =>
   request(`/characters/${characterId}/voies/${voieId}`, { method: 'PATCH' });
+export const setCharacterVoieRang = (characterId, voieId, rang) =>
+  request(`/characters/${characterId}/voies/${voieId}`, { method: 'PATCH', body: JSON.stringify({ rang }) });
 export const levelUpCharacter = (characterId) =>
   request(`/characters/${characterId}/level-up`, { method: 'POST' });
 export const orphanExchange = (characterId, choice) =>

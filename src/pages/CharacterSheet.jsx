@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies,
-  updateCharacter, addCharacterVoie, raiseCharacterVoieRang, forgetCharacterVoie,
+  updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange,
 } from '../utils/api';
 
@@ -51,11 +52,13 @@ function StepButton({ onClick, disabled, children, primary = true }) {
 
 export default function CharacterSheet() {
   const { id } = useParams();
+  const { isGm } = useAuth();
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profils, setProfils] = useState([]);
   const [peuples, setPeuples] = useState([]);
   const [step, setStep] = useState(0);
+  const [editMode, setEditMode] = useState(false);
 
   const [profilId, setProfilId] = useState(null);
   const [peupleId, setPeupleId] = useState(null);
@@ -229,14 +232,37 @@ export default function CharacterSheet() {
   if (character.profil_id && character.pv_max > 0) {
     return (
       <div className="p-6 max-w-2xl mx-auto flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-[var(--accent)]">
-          {character.name}
-          {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
-        </h1>
-        <p className="text-[var(--text-secondary)]">
-          Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--accent)]">
+              {character.name}
+              {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
+            </h1>
+            <p className="text-[var(--text-secondary)]">
+              Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
+            </p>
+          </div>
+          {isGm && (
+            <button
+              onClick={() => setEditMode((v) => !v)}
+              className={`shrink-0 px-3 py-1.5 rounded-lg border text-sm ${
+                editMode ? 'border-[var(--accent)] bg-[var(--bg-input)] text-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--accent)]'
+              }`}
+            >
+              {editMode ? 'Quitter le mode édition' : 'Mode édition'}
+            </button>
+          )}
+        </div>
 
+        {editMode ? (
+          <GmEditPanel
+            character={character}
+            profils={profils}
+            peuples={peuples}
+            onRefresh={refreshCharacter}
+          />
+        ) : (
+        <>
         <Card className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
           <StatAdjuster
             label="PV" current={character.pv_current} max={character.pv_max}
@@ -301,6 +327,8 @@ export default function CharacterSheet() {
         </Card>
 
         <LevelUpPanel character={character} profilVoies={profilVoies} profils={profils} onRefresh={refreshCharacter} />
+        </>
+        )}
       </div>
     );
   }
@@ -814,6 +842,231 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
           ))}
         </div>
       </div>
+      </Card>
+    </div>
+  );
+}
+
+function GmEditPanel({ character, profils, peuples, onRefresh }) {
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [allVoies, setAllVoies] = useState([]);
+  const [addVoieId, setAddVoieId] = useState('');
+  const [addVoieRang, setAddVoieRang] = useState(1);
+
+  const [form, setForm] = useState({
+    profil_id: character.profil_id,
+    peuple_id: character.peuple_id,
+    level: character.level,
+    caracteristiques: { ...character.caracteristiques },
+    capacity_points_available: character.capacity_points_available,
+    forgets_available: character.forgets_available,
+    pv_body_total: character.pv_body_total,
+    pc_bonus_orphan: character.pc_bonus_orphan,
+    dr_bonus_orphan: character.dr_bonus_orphan,
+    pm_bonus_orphan: character.pm_bonus_orphan,
+  });
+
+  useEffect(() => {
+    getVoies({}).then(setAllVoies).catch(() => {});
+  }, []);
+
+  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const setCarac = (c, value) => setForm((prev) => ({ ...prev, caracteristiques: { ...prev.caracteristiques, [c]: value } }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateCharacter(character.id, form);
+      await onRefresh();
+      toast.success('Fiche mise à jour');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeVoieRang = async (voieId, rang) => {
+    setBusy(true);
+    try {
+      await setCharacterVoieRang(character.id, voieId, rang);
+      await onRefresh();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAddVoie = async () => {
+    if (!addVoieId) return;
+    setBusy(true);
+    try {
+      await addCharacterVoie(character.id, {
+        voie_id: Number(addVoieId),
+        obtained_at_level: character.level,
+        spend_points: false,
+        rang: Number(addVoieRang) || 1,
+      });
+      await onRefresh();
+      setAddVoieId('');
+      setAddVoieRang(1);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
+  const availableVoies = allVoies.filter((v) => !ownedVoieIds.has(v.id));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-3 border-[var(--accent)]">
+        <h2 className="font-semibold">Édition MJ — contrôle total</h2>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm flex flex-col gap-1">
+            Profil
+            <select
+              value={form.profil_id || ''}
+              onChange={(e) => setField('profil_id', Number(e.target.value))}
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            >
+              {profils.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm flex flex-col gap-1">
+            Peuple
+            <select
+              value={form.peuple_id || ''}
+              onChange={(e) => setField('peuple_id', Number(e.target.value))}
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            >
+              {peuples.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm flex flex-col gap-1">
+            Niveau
+            <input
+              type="number"
+              value={form.level}
+              onChange={(e) => setField('level', Number(e.target.value))}
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+          </label>
+        </div>
+
+        <div>
+          <p className="text-sm mb-1">Caractéristiques</p>
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+            {CARACS.map((c) => (
+              <label key={c} className="text-xs flex flex-col items-center gap-1">
+                {c}
+                <input
+                  type="number"
+                  value={form.caracteristiques[c]}
+                  onChange={(e) => setCarac(c, Number(e.target.value))}
+                  className="w-14 px-1 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)] text-center"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm mb-1">Grand livre / ressources brutes</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              ['capacity_points_available', 'Points de capacité'],
+              ['forgets_available', "Jetons d'oubli"],
+              ['pv_body_total', 'PV corps (grand livre)'],
+              ['pc_bonus_orphan', 'Bonus PC orphelin'],
+              ['dr_bonus_orphan', 'Bonus DR orphelin'],
+              ['pm_bonus_orphan', 'Bonus PM orphelin'],
+            ].map(([key, label]) => (
+              <label key={key} className="text-xs flex flex-col gap-1">
+                {label}
+                <input
+                  type="number"
+                  value={form[key]}
+                  onChange={(e) => setField(key, Number(e.target.value))}
+                  className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <StepButton onClick={handleSave} disabled={saving}>
+          {saving ? 'Sauvegarde...' : 'Sauvegarder les champs ci-dessus'}
+        </StepButton>
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <h2 className="font-semibold">Voies possédées</h2>
+        {(character.voies || []).length === 0 && (
+          <p className="text-sm text-[var(--text-secondary)]">Aucune voie.</p>
+        )}
+        <div className="flex flex-col gap-2">
+          {(character.voies || []).map((v) => (
+            <div key={v.voie_id} className="flex items-center justify-between gap-2 text-sm">
+              <span>{v.name}</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  defaultValue={v.rang}
+                  min={0}
+                  onBlur={(e) => {
+                    const rang = Number(e.target.value);
+                    if (rang !== v.rang) changeVoieRang(v.voie_id, rang);
+                  }}
+                  disabled={busy}
+                  className="w-16 px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)] text-center"
+                />
+                <button
+                  onClick={() => changeVoieRang(v.voie_id, 0)}
+                  disabled={busy}
+                  className="px-2 py-1 rounded border border-[var(--border)] text-xs hover:border-red-500 disabled:opacity-50"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="flex flex-col gap-2">
+        <h2 className="font-semibold">Ajouter une voie (sans restriction)</h2>
+        <div className="flex flex-wrap gap-2 items-center">
+          <select
+            value={addVoieId}
+            onChange={(e) => setAddVoieId(e.target.value)}
+            className="flex-1 min-w-[200px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          >
+            <option value="">— choisir une voie —</option>
+            {availableVoies.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name} ({v.type}{v.profil_id ? ' · ' + (profils.find((p) => p.id === v.profil_id)?.name || '') : ''})
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={addVoieRang}
+            min={1}
+            onChange={(e) => setAddVoieRang(e.target.value)}
+            className="w-20 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-center"
+          />
+          <StepButton onClick={handleAddVoie} disabled={busy || !addVoieId}>Ajouter</StepButton>
+        </div>
       </Card>
     </div>
   );
