@@ -63,6 +63,8 @@ export default function CharacterSheet() {
   const [profilVoies, setProfilVoies] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
   const [demiElfeChoices, setDemiElfeChoices] = useState(null);
+  const [voieDuMage, setVoieDuMage] = useState(null);
+  const [replaceWithMage, setReplaceWithMage] = useState(false);
   const [selectedVoieIds, setSelectedVoieIds] = useState([]);
   const [mageBonusVoieId, setMageBonusVoieId] = useState(null);
   const [equipement, setEquipement] = useState('');
@@ -162,6 +164,12 @@ export default function CharacterSheet() {
           allPeupleVoies.filter((v) => ['peuple-humain', 'peuple-elfe-haut', 'peuple-elfe-sylvain'].includes(v.code))
         );
       }
+
+      if (profil.famille_code === 'mages') {
+        const mageVoies = await getVoies({ type: 'mage' });
+        if (mageVoies.length > 0) setVoieDuMage(mageVoies[0]);
+      }
+
       setStep(4);
     } catch (e) {
       toast.error(e.message);
@@ -187,10 +195,17 @@ export default function CharacterSheet() {
         equipement: equipement.split(',').map((s) => s.trim()).filter(Boolean),
       });
 
-      const voiesToAdd = [...selectedVoieIds, ...(peupleVoie ? [peupleVoie.id] : [])];
-      for (const voieId of voiesToAdd) {
+      const voiesToAdd = [
+        ...selectedVoieIds.map((voieId) => ({ voieId, rangCap: null })),
+        // Replacing the peuple voie with the voie du mage freezes it at rang 1 forever (p.60).
+        ...(peupleVoie ? [{ voieId: peupleVoie.id, rangCap: replaceWithMage ? 1 : null }] : []),
+        ...(replaceWithMage && voieDuMage ? [{ voieId: voieDuMage.id, rangCap: null }] : []),
+      ];
+      for (const { voieId, rangCap } of voiesToAdd) {
         const rang = voieId === mageBonusVoieId ? 2 : 1;
-        await addCharacterVoie(id, { voie_id: voieId, obtained_at_level: 1, spend_points: false, rang });
+        await addCharacterVoie(id, {
+          voie_id: voieId, obtained_at_level: 1, spend_points: false, rang, rang_cap: rangCap,
+        });
       }
 
       setCharacter(await getCharacter(id));
@@ -258,7 +273,12 @@ export default function CharacterSheet() {
           <div className="flex flex-col gap-4">
             {character.voies?.map((v) => (
               <div key={v.voie_id}>
-                <div className="font-medium text-sm">{v.name} — rang {v.rang}</div>
+                <div className="font-medium text-sm">
+                  {v.name} — rang {v.rang}
+                  {v.rang_cap && v.rang >= v.rang_cap && (
+                    <span className="ml-1 text-xs text-[var(--text-secondary)]">(figée)</span>
+                  )}
+                </div>
                 <ul className="text-sm flex flex-col gap-1.5 mt-1">
                   {v.capacites?.map((c) => (
                     <li key={c.id}>
@@ -414,6 +434,29 @@ export default function CharacterSheet() {
             </div>
           )}
 
+          {voieDuMage && peupleVoie && (
+            <div className="border-b border-[var(--border)] pb-3 mb-1">
+              <p className="text-sm mb-2">
+                Remplacer la voie de peuple ({peupleVoie.name}) par la <strong>Voie du mage</strong> ? Vous
+                conservez la capacité de rang 1 de la voie de peuple, mais elle ne progressera plus jamais.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setReplaceWithMage(false); setMageBonusVoieId(null); }}
+                  className={`px-2 py-1 rounded border text-sm ${!replaceWithMage ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                >
+                  Non, garder {peupleVoie.name}
+                </button>
+                <button
+                  onClick={() => { setReplaceWithMage(true); setMageBonusVoieId(null); }}
+                  className={`px-2 py-1 rounded border text-sm ${replaceWithMage ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                >
+                  Oui, Voie du mage
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-2">
             {profilVoies.map((v) => (
               <button
@@ -457,6 +500,14 @@ export default function CharacterSheet() {
                     </button>
                   );
                 })}
+                {replaceWithMage && voieDuMage && (
+                  <button
+                    onClick={() => setMageBonusVoieId(voieDuMage.id)}
+                    className={`px-2 py-1 rounded border text-sm ${mageBonusVoieId === voieDuMage.id ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                  >
+                    Voie du mage (Maîtrise de la magie)
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -593,7 +644,7 @@ function LevelUpPanel({ character, profilVoies, onRefresh }) {
       <div>
         <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
         <div className="flex flex-wrap gap-2">
-          {(character.voies || []).map((v) => (
+          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap)).map((v) => (
             <button
               key={v.voie_id}
               onClick={() => run(() => raiseCharacterVoieRang(character.id, v.voie_id))}
