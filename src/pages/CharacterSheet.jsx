@@ -373,7 +373,7 @@ export default function CharacterSheet() {
                                 {c.name}
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
-                              <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} />
+                              <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} />
                             </li>
                           ))}
                         </ul>

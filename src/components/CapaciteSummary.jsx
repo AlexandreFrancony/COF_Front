@@ -1,9 +1,11 @@
 import { resolveEvolvingDice } from '../utils/evolvingDice';
+import { resolveCapaciteChoice } from '../utils/capaciteChoices';
 
 // Shows a capacité's short résumé (fast reading) with a link to its full description
 // in the glossaire, instead of always printing the full rulebook paragraph inline.
-export default function CapaciteSummary({ capacite, level, voieId }) {
+export default function CapaciteSummary({ capacite, level, voieId, character }) {
   const linkedVoieId = voieId ?? capacite.voie_id;
+  const choice = character ? resolveCapaciteChoice(capacite, character) : null;
   return (
     <span className="text-[var(--text-secondary)]">
       {' '}
@@ -12,6 +14,12 @@ export default function CapaciteSummary({ capacite, level, voieId }) {
         <span className="font-medium text-[var(--accent)]">{capacite.resume}</span>
       ) : (
         resolveEvolvingDice(capacite.description, level)
+      )}
+      {choice && (
+        <>
+          {' — '}
+          <span className="font-bold text-[var(--text-primary)]">{choice}</span>
+        </>
       )}
       {linkedVoieId && (
         <a
