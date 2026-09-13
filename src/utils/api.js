@@ -116,6 +116,11 @@ export const getVoies = (params = {}) => {
   return request(`/rules/voies${query ? `?${query}` : ''}`);
 };
 
+// Shared armor library (name + flat DEF bonus) — GM manages it, any character can equip one.
+export const getArmures = () => request('/rules/armures');
+export const createArmure = (data) => request('/rules/armures', { method: 'POST', body: JSON.stringify(data) });
+export const deleteArmure = (id) => request(`/rules/armures/${id}`, { method: 'DELETE' });
+
 // ============================================================================
 // LIVE BOARD (phase 2)
 // ============================================================================

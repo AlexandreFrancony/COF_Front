@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
-  levelUpCharacter, orphanExchange,
+  levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
 } from '../utils/api';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
@@ -87,13 +87,15 @@ export default function CharacterSheet() {
   const [origineHumaine, setOrigineHumaine] = useState('');
   const [equipement, setEquipement] = useState('');
   const [saving, setSaving] = useState(false);
+  const [armures, setArmures] = useState([]);
 
   useEffect(() => {
-    Promise.all([getCharacter(id), getProfils(), getPeuples()])
-      .then(([char, profilsData, peuplesData]) => {
+    Promise.all([getCharacter(id), getProfils(), getPeuples(), getArmures()])
+      .then(([char, profilsData, peuplesData, armuresData]) => {
         setCharacter(char);
         setProfils(profilsData);
         setPeuples(peuplesData);
+        setArmures(armuresData);
         if (char.profil_id) setProfilId(char.profil_id);
         if (char.peuple_id) setPeupleId(char.peuple_id);
       })
@@ -322,6 +324,14 @@ export default function CharacterSheet() {
             ))}
           </div>
         </Card>
+
+        <ArmureSelector
+          character={character}
+          armures={armures}
+          isGm={isGm}
+          onArmuresChange={setArmures}
+          onRefresh={refreshCharacter}
+        />
 
         <Card>
           <h2 className="font-semibold mb-2">Voies</h2>
@@ -1219,6 +1229,145 @@ function GmEditPanel({ character, profils, peuples, onRefresh }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+// Equipped armor gives a flat DEF bonus (already folded into character.defense by the backend
+// recompute) — anyone with access to the character (owner or GM) can (un)equip; only the GM
+// curates the shared library itself (add/remove entries), since exact COF2 armor stats live in
+// the rulebook, not something the app hardcodes.
+function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }) {
+  const [showManage, setShowManage] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newBonus, setNewBonus] = useState(1);
+  const [busy, setBusy] = useState(false);
+
+  const current = armures.find((a) => a.id === character.armure_id);
+
+  const handleSelect = async (e) => {
+    const value = e.target.value;
+    setBusy(true);
+    try {
+      await updateCharacter(character.id, { armure_id: value ? Number(value) : null });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return;
+    setBusy(true);
+    try {
+      const created = await createArmure({ name: newName.trim(), defense_bonus: Number(newBonus) || 0 });
+      onArmuresChange([...armures, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewName('');
+      setNewBonus(1);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (armureId) => {
+    setBusy(true);
+    try {
+      await deleteArmure(armureId);
+      onArmuresChange(armures.filter((a) => a.id !== armureId));
+      if (character.armure_id === armureId) await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="font-semibold mb-2">Armure</h2>
+      <div className="flex items-center gap-2">
+        <select
+          value={character.armure_id || ''}
+          onChange={handleSelect}
+          disabled={busy}
+          className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+        >
+          <option value="">Aucune</option>
+          {armures.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name} ({a.defense_bonus >= 0 ? '+' : ''}{a.defense_bonus} DEF)
+            </option>
+          ))}
+        </select>
+        {isGm && (
+          <button
+            type="button"
+            onClick={() => setShowManage((v) => !v)}
+            className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
+          >
+            Gérer
+          </button>
+        )}
+      </div>
+
+      {current && (
+        <p className="text-xs text-[var(--text-secondary)] mt-1">
+          Bonus actuel : {current.defense_bonus >= 0 ? '+' : ''}{current.defense_bonus} DEF (déjà inclus dans la Défense ci-dessus)
+        </p>
+      )}
+
+      {isGm && showManage && (
+        <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Nom (ex: Armure de cuir)"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="flex-1 min-w-[160px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <input
+              type="number"
+              value={newBonus}
+              onChange={(e) => setNewBonus(e.target.value)}
+              className="w-20 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm text-center"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={busy || !newName.trim()}
+              className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              Ajouter
+            </button>
+          </div>
+
+          {armures.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {armures.map((a) => (
+                <span
+                  key={a.id}
+                  className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] text-xs"
+                >
+                  {a.name} ({a.defense_bonus >= 0 ? '+' : ''}{a.defense_bonus})
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(a.id)}
+                    className="text-[var(--text-secondary)] hover:text-red-500"
+                    title="Supprimer de la bibliothèque"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 
