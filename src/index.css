@@ -51,3 +51,85 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
 }
+
+/* ============================================================================
+   "Livre" theme — character sheet only (the lab for a future site-wide pass).
+   Gold-on-cream, Art Déco line work, lifted straight from the real COF2 rules
+   book's own character sheet (Fiche_Vierge, Black Book Éditions) rather than a
+   generic "fantasy parchment" — the book itself has no texture or serif wash,
+   just clean gold rules and bars on flat paper. Scoped under .cof-sheet so it
+   overrides the shared --bg-card/--border/--accent tokens locally instead of
+   touching the app-wide Terracotta Cream theme.
+   ============================================================================ */
+.cof-sheet {
+  --cof-gold: #A9853D;
+  --cof-gold-deep: #7C5F28;
+  --cof-gold-line: #C7A863;
+  --cof-cream: #F6EFDD;
+  --cof-panel: #FFFFFF;
+  --cof-ink: #2A2013;
+  --cof-ink-soft: #6E5F45;
+
+  --bg-primary: var(--cof-cream);
+  --bg-card: var(--cof-panel);
+  --bg-input: var(--cof-cream);
+  --border: var(--cof-gold-line);
+  --text-primary: var(--cof-ink);
+  --text-secondary: var(--cof-ink-soft);
+  --accent: var(--cof-gold);
+  --accent-hover: var(--cof-gold-deep);
+
+  font-family: 'Lora', Georgia, 'Times New Roman', serif;
+  color: var(--cof-ink);
+}
+.dark .cof-sheet {
+  --cof-gold: #C9A254;
+  --cof-gold-deep: #8F7239;
+  --cof-gold-line: #8A6F3C;
+  --cof-cream: #1C1712;
+  --cof-panel: #262019;
+  --cof-ink: #F1E6CD;
+  --cof-ink-soft: #B9A87E;
+}
+
+.cof-sheet h1,
+.cof-sheet h2,
+.cof-sheet .cof-display {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+/* Art Déco cut corners — the same octagonal notch the book's own frame uses. Scoped under
+   .cof-sheet (not a bare .cof-plate rule) so the clip only ever applies inside this theme. */
+.cof-sheet .cof-plate {
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0, 100% 14px,
+    100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%,
+    0 calc(100% - 14px), 0 14px
+  );
+}
+
+.cof-sheet .cof-plate-head {
+  background: var(--cof-gold);
+  color: #fff;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.cof-sheet .cof-vital {
+  background: var(--cof-panel);
+  border: 1px solid var(--cof-gold-line);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.cof-sheet .cof-chip {
+  background: var(--cof-gold);
+  color: #fff;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}

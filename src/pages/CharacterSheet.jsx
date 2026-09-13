@@ -63,10 +63,20 @@ function getFacette(character) {
   };
 }
 
-function Card({ children, className = '' }) {
+// title/headerAction are optional: omitted, Card renders exactly as before (the creation
+// wizard's own inline <h2> usages stay untouched). Passed, it gets the "livre" plate treatment —
+// a solid gold title bar instead of a plain heading — but only inside the .cof-sheet scope
+// (finished character sheet); the cof-plate/cof-plate-head classes are inert everywhere else.
+function Card({ children, className = '', title, headerAction }) {
   return (
-    <div className={`p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] ${className}`}>
-      {children}
+    <div className={`cof-plate rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] ${title ? '' : 'p-4'} ${className}`}>
+      {title && (
+        <div className="cof-plate-head px-4 py-2 flex items-center justify-between gap-2">
+          <span>{title}</span>
+          {headerAction}
+        </div>
+      )}
+      <div className={title ? 'p-4' : ''}>{children}</div>
     </div>
   );
 }
@@ -455,7 +465,7 @@ export default function CharacterSheet() {
     };
 
     return (
-      <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
+      <div className="cof-sheet p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <CharacterAvatar character={character} onRefresh={refreshCharacter} />
@@ -502,21 +512,21 @@ export default function CharacterSheet() {
           />
         ) : (
         <>
-        <Card className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatAdjuster
-            label={`${STAT_EMOJI.PV} PV`} current={character.pv_current} max={character.pv_max}
+            label="Vigueur" current={character.pv_current} max={character.pv_max}
             onChange={(v) => updateCharacter(id, { pv_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
-            label={`${STAT_EMOJI.PM} PM`} current={character.pm_current} max={character.pm_max} koLabel={false}
+            label="Mana" current={character.pm_current} max={character.pm_max} koLabel={false}
             onChange={(v) => updateCharacter(id, { pm_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
-            label={`${STAT_EMOJI.Chance} Chance`} current={character.points_chance_current} max={character.points_chance} koLabel={false}
+            label="Chance" current={character.points_chance_current} max={character.points_chance} koLabel={false}
             onChange={(v) => updateCharacter(id, { points_chance_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
-            label={`${STAT_EMOJI.DR} DR`} current={character.dr_current} max={character.dr_max} koLabel={false}
+            label="Récupération" current={character.dr_current} max={character.dr_max} koLabel={false}
             suffix={character.dr_die ? ` ${character.dr_die}` : ''}
             onChange={(v) => updateCharacter(id, { dr_current: v }).then(refreshCharacter)}
           />
@@ -524,12 +534,12 @@ export default function CharacterSheet() {
             ['Défense', character.defense],
             ['Initiative', character.initiative],
           ].map(([label, value]) => (
-            <div key={label}>
-              <div className="text-xs text-[var(--text-secondary)]">{STAT_EMOJI[label]} {label}</div>
-              <div className="font-bold text-lg">{value}</div>
+            <div key={label} className="cof-vital">
+              <div className="cof-plate-head text-center py-1.5">{label}</div>
+              <div className="cof-display text-center font-bold text-xl py-3">{value}</div>
             </div>
           ))}
-        </Card>
+        </div>
 
         {facette && (
           <Card className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
@@ -575,19 +585,18 @@ export default function CharacterSheet() {
 
         <div className="grid lg:grid-cols-3 gap-4 items-start">
           <div className="lg:col-span-2 flex flex-col gap-4">
-            <Card>
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="font-semibold">Voies</h2>
-                {allVoiesIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setExpandedVoies(allExpanded ? new Set() : new Set(allVoiesIds))}
-                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)]"
-                  >
-                    {allExpanded ? 'Tout replier' : 'Tout déplier'}
-                  </button>
-                )}
-              </div>
+            <Card
+              title="Voies"
+              headerAction={allVoiesIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedVoies(allExpanded ? new Set() : new Set(allVoiesIds))}
+                  className="text-xs normal-case tracking-normal font-normal opacity-90 hover:opacity-100 underline"
+                >
+                  {allExpanded ? 'Tout replier' : 'Tout déplier'}
+                </button>
+              )}
+            >
               <div className="flex flex-col gap-2">
                 {topLevelVoies.map((v) => {
                   const isOpen = expandedVoies.has(v.voie_id);
@@ -603,7 +612,7 @@ export default function CharacterSheet() {
                         onClick={() => toggleVoieExpanded(v.voie_id)}
                         className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--bg-input)]"
                       >
-                        <span className="font-medium text-sm">
+                        <span className="cof-display text-sm text-[var(--accent-hover)]">
                           {v.name} — rang {v.rang}
                           {v.rang_cap && v.rang >= v.rang_cap && (
                             <span className="ml-1 text-xs text-[var(--text-secondary)] font-normal">(figée)</span>
@@ -645,13 +654,12 @@ export default function CharacterSheet() {
           </div>
 
           <div className="flex flex-col gap-4">
-            <Card>
-              <h2 className="font-semibold mb-2">Caractéristiques</h2>
+            <Card title="Caractéristiques">
               <div className="grid grid-cols-4 gap-2 text-center text-sm">
                 {CARACS.map((c) => (
                   <div key={c}>
-                    <div className="text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</div>
-                    <div className="font-bold">{character.caracteristiques[c] >= 0 ? '+' : ''}{character.caracteristiques[c]}</div>
+                    <div className="cof-chip rounded text-xs py-1 mb-1">{c}</div>
+                    <div className="cof-display font-bold">{character.caracteristiques[c] >= 0 ? '+' : ''}{character.caracteristiques[c]}</div>
                   </div>
                 ))}
               </div>
@@ -1833,20 +1841,18 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
   };
 
   return (
-    <Card>
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold">Armure &amp; bouclier</h2>
-        {isGm && (
-          <button
-            type="button"
-            onClick={() => setShowManage((v) => !v)}
-            className="px-2 py-1 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
-          >
-            Gérer
-          </button>
-        )}
-      </div>
-
+    <Card
+      title="Armure &amp; bouclier"
+      headerAction={isGm && (
+        <button
+          type="button"
+          onClick={() => setShowManage((v) => !v)}
+          className="text-xs normal-case tracking-normal font-normal opacity-90 hover:opacity-100 underline whitespace-nowrap"
+        >
+          Gérer
+        </button>
+      )}
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm flex flex-col gap-1">
           Armure
@@ -2015,9 +2021,7 @@ function EquipementCard({ character, onRefresh }) {
   };
 
   return (
-    <Card>
-      <h2 className="font-semibold mb-2">🎒 Équipement</h2>
-
+    <Card title="Équipement">
       <p className="text-xs text-[var(--text-secondary)] mb-1">Bourse</p>
       <div className="grid grid-cols-4 gap-2 mb-3">
         {MONNAIE_FIELDS.map(([field, emoji, label]) => (
@@ -2137,20 +2141,18 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
   };
 
   return (
-    <Card>
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold">Armes</h2>
-        {isGm && (
-          <button
-            type="button"
-            onClick={() => setShowManage((v) => !v)}
-            className="px-2 py-1 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
-          >
-            Gérer
-          </button>
-        )}
-      </div>
-
+    <Card
+      title="Armes"
+      headerAction={isGm && (
+        <button
+          type="button"
+          onClick={() => setShowManage((v) => !v)}
+          className="text-xs normal-case tracking-normal font-normal opacity-90 hover:opacity-100 underline whitespace-nowrap"
+        >
+          Gérer
+        </button>
+      )}
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm flex flex-col gap-1">
           Arme principale
@@ -2349,32 +2351,34 @@ function StatAdjuster({ label, current, max, onChange, koLabel = true, suffix = 
   const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
 
   return (
-    <div>
-      <div className="text-xs text-[var(--text-secondary)]">{label}</div>
-      <div className="flex items-center justify-center gap-2">
-        <button
-          onClick={() => adjust(-1)}
-          disabled={busy || current <= 0}
-          className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none"
-        >
-          −
-        </button>
-        <span className={`font-bold text-lg ${suffix ? 'w-20' : 'w-14'} ${isDown ? 'text-red-500' : ''}`}>
-          {isDown ? 'K.O.' : `${current}/${max}${suffix}`}
-        </span>
-        <button
-          onClick={() => adjust(1)}
-          disabled={busy || current >= max}
-          className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none"
-        >
-          +
-        </button>
-      </div>
-      <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
-          style={{ width: `${isDown ? 100 : pct}%` }}
-        />
+    <div className="cof-vital">
+      <div className="cof-plate-head text-center py-1.5">{label}</div>
+      <div className="px-2 pt-2 pb-2.5">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => adjust(-1)}
+            disabled={busy || current <= 0}
+            className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0"
+          >
+            −
+          </button>
+          <span className={`cof-display font-bold text-lg text-center ${suffix ? 'w-20' : 'w-14'} ${isDown ? 'text-red-500' : ''}`}>
+            {isDown ? 'K.O.' : `${current}/${max}${suffix}`}
+          </span>
+          <button
+            onClick={() => adjust(1)}
+            disabled={busy || current >= max}
+            className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0"
+          >
+            +
+          </button>
+        </div>
+        <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
+            style={{ width: `${isDown ? 100 : pct}%` }}
+          />
+        </div>
       </div>
     </div>
   );
