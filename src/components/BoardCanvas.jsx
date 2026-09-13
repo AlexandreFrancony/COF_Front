@@ -182,35 +182,46 @@ function HudCard({ entry, tone, selected, onClick }) {
 // The camera is a square window (in %, always camera_width tall too — see the schema comment
 // in board.js: the scene and the projector output share the same 16:9 ratio, so a window w%
 // wide is exactly w% tall, no BOARD_ASPECT_RATIO correction needed like board_zones' shapes).
-// disabled while a token or zone is selected — it otherwise sits above the tokens/zones layer
-// (z-30 vs z-10) and, once resized to cover a good chunk of the board, silently steals every
-// click meant for a pawn or zone underneath it (new zones always spawn dead center, exactly
-// where the frame usually sits). Letting clicks pass through while something is selected lets
-// the GM drag it out from under the frame instead of having to shrink the frame first.
-function CameraFrame({ board, selected, onSelect, onDragEnd, disabled = false }) {
+// The rectangle itself never intercepts clicks (pointer-events-none) — it sits above the
+// tokens/zones layer (z-30 vs z-10) and, once resized to cover a good chunk of the board,
+// would otherwise silently steal every click meant for a pawn or zone underneath it, no
+// matter what's selected. The small "🎥 Cadre projeté" tag at its corner is the ONLY
+// interactive part: that's what the GM clicks or drags to select/move the frame.
+function CameraFrame({ board, selected, onSelect, onDragEnd }) {
   const x = board.camera_x ?? 50;
   const y = board.camera_y ?? 50;
   const w = board.camera_width ?? 100;
-  const { ref, handlePointerDown } = usePositionDrag(!disabled, x, y, onDragEnd);
+  // The tag sits at the frame's top-left corner, not its center, so its own drag coordinates
+  // are offset by half the frame's width/height from camera_x/y — shift by that half-width
+  // both ways: fed into the hook as the tag's starting position, and added back on drop to
+  // recover the true center that camera_x/camera_y actually store.
+  const cornerX = x - w / 2;
+  const cornerY = y - w / 2;
+  const { ref, handlePointerDown } = usePositionDrag(true, cornerX, cornerY, (nx, ny) =>
+    onDragEnd(nx + w / 2, ny + w / 2)
+  );
 
   return (
-    <div
-      ref={ref}
-      onPointerDown={handlePointerDown}
-      onClick={(e) => {
-        if (disabled) return;
-        e.stopPropagation();
-        onSelect();
-      }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 border-2 border-dashed ${
-        disabled ? 'pointer-events-none' : 'cursor-move'
-      } ${selected ? 'border-white' : 'border-white/60'}`}
-      style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${w}%` }}
-    >
-      <span className="absolute -top-6 left-0 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white whitespace-nowrap">
+    <>
+      <div
+        className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none border-2 border-dashed ${
+          selected ? 'border-white' : 'border-white/60'
+        }`}
+        style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${w}%` }}
+      />
+      <span
+        ref={ref}
+        onPointerDown={handlePointerDown}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        className="absolute z-30 -translate-y-full cursor-move px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white whitespace-nowrap"
+        style={{ left: `${cornerX}%`, top: `calc(${cornerY}% - 4px)` }}
+      >
         🎥 Cadre projeté
       </span>
-    </div>
+    </>
   );
 }
 
@@ -267,10 +278,12 @@ function cameraCropStyle(board) {
  * caller's job to simply not forward enemy data there.
  *
  * Camera: the GM always sees the full scene (cameraCrop=false, the default) — showCameraFrame
- * additionally draws the projected window as a draggable rectangle so the GM can see exactly
- * what's framed while working on the rest of the map. The projector instead passes
- * cameraCrop=true, which crops+scales the whole scene (background/grid/zones/tokens, NOT the
- * HUD or the frame itself) down to just that window filling the screen.
+ * additionally draws the projected window as a rectangle so the GM can see exactly what's
+ * framed while working on the rest of the map. That rectangle is purely visual and never
+ * intercepts clicks — only its small "🎥 Cadre projeté" corner tag is draggable/clickable —
+ * so it never blocks reaching a pawn or zone it happens to be covering. The projector instead
+ * passes cameraCrop=true, which crops+scales the whole scene (background/grid/zones/tokens,
+ * NOT the HUD or the frame itself) down to just that window filling the screen.
  *
  * className must include a position utility (relative/fixed/absolute) — the token/zone/hud
  * children are positioned against it. Not hardcoded here: Tailwind's generated stylesheet
@@ -340,13 +353,7 @@ export default function BoardCanvas({
       </div>
 
       {showCameraFrame && (
-        <CameraFrame
-          board={board}
-          selected={cameraSelected}
-          onSelect={onSelectCamera}
-          onDragEnd={onCameraDragEnd}
-          disabled={!!selectedToken || !!selectedZone}
-        />
+        <CameraFrame board={board} selected={cameraSelected} onSelect={onSelectCamera} onDragEnd={onCameraDragEnd} />
       )}
 
       {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
