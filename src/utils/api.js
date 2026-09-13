@@ -27,7 +27,12 @@ async function request(endpoint, options = {}) {
     throw new Error(error.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  // A 204 (or any genuinely empty body) has nothing to parse — .json() throws on it, which
+  // silently broke every DELETE that returned 204 (the catch swallowed it as an error toast,
+  // discarding the state update that was supposed to follow the request).
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }
 
 export const login = (credentials) =>
