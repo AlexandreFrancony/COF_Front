@@ -569,11 +569,11 @@ function ScenarioItem({
 
       {expanded && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
           <div
-            className="w-full max-w-5xl max-h-[90vh] overflow-y-auto flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+            className="w-[96vw] max-h-[95vh] overflow-y-auto flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
