@@ -319,9 +319,11 @@ export default function CharacterSheet() {
     });
 
     const facette = getFacette(character);
-    // Reserve caps at PM max + VOL (rang 1 of the Voie de transition) — VOL isn't stored as its
-    // own column, only inside caracteristiques.
-    const artefactMax = (character.pm_max || 0) + (character.caracteristiques?.VOL || 0);
+    // Voie de transition rang (Voie de transition = voie_id 139) gates the artefact's storage cap
+    // (rang 4: +2×VOL instead of +VOL) and withdrawal precision (rang 3: choose the amount instead
+    // of an all-or-nothing dump).
+    const transitionRang = character.voies?.find((v) => v.voie_id === 139)?.rang || 0;
+    const artefactMax = (character.pm_max || 0) + (character.caracteristiques?.VOL || 0) * (transitionRang >= 4 ? 2 : 1);
     const artefactCurrent = character.custom_data?.artefact_reserve_current || 0;
     // Draining himself into the artefact (rang 1) is the controlled half of the mechanic — he
     // bleeds mana out one point at a time to stay under the threshold on purpose.
@@ -331,12 +333,20 @@ export default function CharacterSheet() {
       const nextPm = Math.max(0, character.pm_current - actualDelta);
       updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: nextReserve } }).then(refreshCharacter);
     };
-    // Recovering mana is the uncontrolled half at rang 1: using the artefact dumps its ENTIRE
-    // reserve back into him in one go, not a selectable amount — whatever doesn't fit under
-    // pm_max simply vanishes (lost) rather than staying safely stored for a later attempt.
+    // Recovering mana below rang 3 is uncontrolled: using the artefact dumps its ENTIRE reserve
+    // back into him in one go, not a selectable amount — whatever doesn't fit under pm_max simply
+    // vanishes (lost) rather than staying safely stored for a later attempt.
     const handleArtefactEmpty = () => {
       const nextPm = Math.min(character.pm_max, character.pm_current + artefactCurrent);
       updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: 0 } }).then(refreshCharacter);
+    };
+    // From rang 3, he can pick the exact amount to withdraw (one point at a time) instead of an
+    // all-or-nothing dump — no waste as long as he doesn't ask for more than fits under pm_max.
+    const handleArtefactWithdraw = (delta) => {
+      const actualDelta = Math.min(delta, artefactCurrent);
+      const nextPm = Math.min(character.pm_max, character.pm_current + actualDelta);
+      const nextReserve = artefactCurrent - actualDelta;
+      updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: nextReserve } }).then(refreshCharacter);
     };
 
     return (
@@ -418,14 +428,25 @@ export default function CharacterSheet() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--text-secondary)]">🏺 Réserve de l'artéfact</span>
-              <button
-                onClick={handleArtefactEmpty}
-                disabled={artefactCurrent <= 0}
-                title="Vider l'artéfact d'un coup (rang 1 : tout ce qui dépasse le PM max est perdu)"
-                className="px-2 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40 text-xs"
-              >
-                Vider ↩
-              </button>
+              {transitionRang >= 3 ? (
+                <button
+                  onClick={() => handleArtefactWithdraw(1)}
+                  disabled={artefactCurrent <= 0 || character.pm_current >= character.pm_max}
+                  title="Retirer 1 PM de l'artéfact (rang 3 : quantité choisie, pas de perte)"
+                  className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40"
+                >
+                  ←
+                </button>
+              ) : (
+                <button
+                  onClick={handleArtefactEmpty}
+                  disabled={artefactCurrent <= 0}
+                  title="Vider l'artéfact d'un coup (tout ce qui dépasse le PM max est perdu)"
+                  className="px-2 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40 text-xs"
+                >
+                  Vider ↩
+                </button>
+              )}
               <span className="font-semibold text-sm w-14 text-center">{artefactCurrent}/{artefactMax}</span>
               <button
                 onClick={() => handleArtefactStore(1)}
