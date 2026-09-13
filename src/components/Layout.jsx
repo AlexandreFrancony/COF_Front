@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { openGlossaire, isPlainLeftClick } from '../utils/openGlossaire';
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -16,6 +17,11 @@ export default function Layout({ children }) {
               href="/glossaire"
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => {
+                if (!isPlainLeftClick(e)) return;
+                e.preventDefault();
+                openGlossaire('/glossaire');
+              }}
               className="text-[var(--text-secondary)] hover:text-[var(--accent)]"
             >
               📖 Glossaire
