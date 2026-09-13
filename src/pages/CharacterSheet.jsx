@@ -6,6 +6,7 @@ import {
   getCharacter, getProfils, getPeuples, getVoies,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
+  getArmes, createArme, deleteArme,
 } from '../utils/api';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
@@ -88,14 +89,16 @@ export default function CharacterSheet() {
   const [equipement, setEquipement] = useState('');
   const [saving, setSaving] = useState(false);
   const [armures, setArmures] = useState([]);
+  const [armes, setArmes] = useState([]);
 
   useEffect(() => {
-    Promise.all([getCharacter(id), getProfils(), getPeuples(), getArmures()])
-      .then(([char, profilsData, peuplesData, armuresData]) => {
+    Promise.all([getCharacter(id), getProfils(), getPeuples(), getArmures(), getArmes()])
+      .then(([char, profilsData, peuplesData, armuresData, armesData]) => {
         setCharacter(char);
         setProfils(profilsData);
         setPeuples(peuplesData);
         setArmures(armuresData);
+        setArmes(armesData);
         if (char.profil_id) setProfilId(char.profil_id);
         if (char.peuple_id) setPeupleId(char.peuple_id);
       })
@@ -289,6 +292,8 @@ export default function CharacterSheet() {
             peuples={peuples}
             armures={armures}
             onArmuresChange={setArmures}
+            armes={armes}
+            onArmesChange={setArmes}
             onRefresh={refreshCharacter}
           />
         ) : (
@@ -332,6 +337,14 @@ export default function CharacterSheet() {
           armures={armures}
           isGm={isGm}
           onArmuresChange={setArmures}
+          onRefresh={refreshCharacter}
+        />
+
+        <ArmeSelector
+          character={character}
+          armes={armes}
+          isGm={isGm}
+          onArmesChange={setArmes}
           onRefresh={refreshCharacter}
         />
 
@@ -995,7 +1008,7 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   );
 }
 
-function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, onRefresh }) {
+function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, armes, onArmesChange, onRefresh }) {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [allVoies, setAllVoies] = useState([]);
@@ -1172,6 +1185,8 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, on
       </Card>
 
       <ArmureSelector character={character} armures={armures} isGm onArmuresChange={onArmuresChange} onRefresh={onRefresh} />
+
+      <ArmeSelector character={character} armes={armes} isGm onArmesChange={onArmesChange} onRefresh={onRefresh} />
 
       <Card className="flex flex-col gap-3">
         <h2 className="font-semibold">Voies possédées</h2>
@@ -1419,6 +1434,276 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
                   className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] text-xs"
                 >
                   {a.type === 'bouclier' ? '🛡️' : '🧥'} {armureOptionLabel(a)}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(a.id)}
+                    className="text-[var(--text-secondary)] hover:text-red-500"
+                    title="Supprimer de la bibliothèque"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function armeOptionLabel(a) {
+  const bits = [a.damage_dice];
+  if (a.type_degats) bits.push(a.type_degats);
+  if (a.portee != null) bits.push(`portée ${a.portee} m`);
+  if (a.prix) bits.push(a.prix);
+  return `${a.name} (${bits.join(', ')})`;
+}
+
+// Nothing here feeds a computed stat — damage is rolled live at the table, so this just
+// displays the equipped weapon's dice + FOR (for a contact weapon that isn't the rare
+// for_applies=false exception, e.g. Stylet) alongside the character's own attack values
+// (computed server-side but never shown anywhere on the sheet before this).
+function armeDamageDisplay(arme, character) {
+  if (!arme) return null;
+  if (arme.category === 'contact' && arme.for_applies) {
+    const forVal = character.caracteristiques.FOR;
+    return `${arme.damage_dice} ${forVal >= 0 ? '+' : ''}${forVal} (FOR)`;
+  }
+  return arme.damage_dice;
+}
+
+// A character can wield up to two weapons (principale/secondaire — dual-wielding etc.,
+// unenforced) from the shared library (p.182-184). Anyone with access (owner or GM) can
+// (un)equip either slot; only the GM curates the library itself.
+function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
+  const [showManage, setShowManage] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('contact');
+  const [newDice, setNewDice] = useState('');
+  const [newTypeDegats, setNewTypeDegats] = useState('');
+  const [newPortee, setNewPortee] = useState('');
+  const [newPrix, setNewPrix] = useState('');
+  const [newForApplies, setNewForApplies] = useState(true);
+  const [newNotes, setNewNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const principale = armes.find((a) => a.id === character.arme_principale_id);
+  const secondaire = armes.find((a) => a.id === character.arme_secondaire_id);
+  const va = character.valeurs_attaque || {};
+
+  const handleSelect = async (field, value) => {
+    setBusy(true);
+    try {
+      await updateCharacter(character.id, { [field]: value ? Number(value) : null });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newDice.trim()) return;
+    setBusy(true);
+    try {
+      const created = await createArme({
+        name: newName.trim(),
+        category: newCategory,
+        damage_dice: newDice.trim(),
+        type_degats: newTypeDegats.trim() || null,
+        portee: newPortee !== '' ? Number(newPortee) : null,
+        prix: newPrix.trim() || null,
+        for_applies: newForApplies,
+        notes: newNotes.trim() || null,
+      });
+      onArmesChange([...armes, created]);
+      setNewName('');
+      setNewDice('');
+      setNewTypeDegats('');
+      setNewPortee('');
+      setNewPrix('');
+      setNewForApplies(true);
+      setNewNotes('');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (armeId) => {
+    setBusy(true);
+    try {
+      await deleteArme(armeId);
+      onArmesChange(armes.filter((a) => a.id !== armeId));
+      if (character.arme_principale_id === armeId || character.arme_secondaire_id === armeId) await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="font-semibold">Armes</h2>
+        {isGm && (
+          <button
+            type="button"
+            onClick={() => setShowManage((v) => !v)}
+            className="px-2 py-1 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
+          >
+            Gérer
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm flex flex-col gap-1">
+          Arme principale
+          <select
+            value={character.arme_principale_id || ''}
+            onChange={(e) => handleSelect('arme_principale_id', e.target.value)}
+            disabled={busy}
+            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          >
+            <option value="">Aucune</option>
+            <optgroup label="Contact">
+              {armes.filter((a) => a.category === 'contact').map((a) => (
+                <option key={a.id} value={a.id}>{armeOptionLabel(a)}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Distance">
+              {armes.filter((a) => a.category === 'distance').map((a) => (
+                <option key={a.id} value={a.id}>{armeOptionLabel(a)}</option>
+              ))}
+            </optgroup>
+          </select>
+        </label>
+        <label className="text-sm flex flex-col gap-1">
+          Arme secondaire
+          <select
+            value={character.arme_secondaire_id || ''}
+            onChange={(e) => handleSelect('arme_secondaire_id', e.target.value)}
+            disabled={busy}
+            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          >
+            <option value="">Aucune</option>
+            <optgroup label="Contact">
+              {armes.filter((a) => a.category === 'contact').map((a) => (
+                <option key={a.id} value={a.id}>{armeOptionLabel(a)}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Distance">
+              {armes.filter((a) => a.category === 'distance').map((a) => (
+                <option key={a.id} value={a.id}>{armeOptionLabel(a)}</option>
+              ))}
+            </optgroup>
+          </select>
+        </label>
+      </div>
+
+      {(principale || secondaire) && (
+        <div className="mt-2 flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+          {principale && (
+            <p>
+              <strong>{principale.name}</strong> — Dégâts : {armeDamageDisplay(principale, character)}
+              {principale.notes && <span> ({principale.notes})</span>}
+            </p>
+          )}
+          {secondaire && (
+            <p>
+              <strong>{secondaire.name}</strong> — Dégâts : {armeDamageDisplay(secondaire, character)}
+              {secondaire.notes && <span> ({secondaire.notes})</span>}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-4 text-sm mt-3 pt-3 border-t border-[var(--border)]">
+        <span>Attaque contact <strong>{va.contact}</strong></span>
+        <span>Attaque distance <strong>{va.distance}</strong></span>
+        <span>Attaque magique <strong>{va.magique}</strong></span>
+      </div>
+
+      {isGm && showManage && (
+        <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Nom (ex: Épée longue)"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <select
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            >
+              <option value="contact">Contact</option>
+              <option value="distance">Distance</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Dé (ex: 1d8)"
+              value={newDice}
+              onChange={(e) => setNewDice(e.target.value)}
+              className="w-24 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Type DM"
+              value={newTypeDegats}
+              onChange={(e) => setNewTypeDegats(e.target.value)}
+              className="w-28 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <input
+              type="number"
+              placeholder="Portée (m)"
+              value={newPortee}
+              onChange={(e) => setNewPortee(e.target.value)}
+              className="w-24 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Prix (ex: 6 pa)"
+              value={newPrix}
+              onChange={(e) => setNewPrix(e.target.value)}
+              className="w-24 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <label className="flex items-center gap-1 text-sm">
+              <input type="checkbox" checked={newForApplies} onChange={(e) => setNewForApplies(e.target.checked)} />
+              +FOR aux DM
+            </label>
+            <input
+              type="text"
+              placeholder="Notes"
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={busy || !newName.trim() || !newDice.trim()}
+              className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              Ajouter
+            </button>
+          </div>
+
+          {armes.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {armes.map((a) => (
+                <span
+                  key={a.id}
+                  className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] text-xs"
+                >
+                  {a.category === 'distance' ? '🏹' : '⚔️'} {armeOptionLabel(a)}
                   <button
                     type="button"
                     onClick={() => handleDelete(a.id)}

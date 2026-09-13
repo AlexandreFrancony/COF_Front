@@ -126,6 +126,12 @@ export const getArmures = () => request('/rules/armures');
 export const createArmure = (data) => request('/rules/armures', { method: 'POST', body: JSON.stringify(data) });
 export const deleteArmure = (id) => request(`/rules/armures/${id}`, { method: 'DELETE' });
 
+// Shared weapon library (p.182-184) — reference info only (damage dice, portée, prix...),
+// nothing here feeds a computed stat.
+export const getArmes = () => request('/rules/armes');
+export const createArme = (data) => request('/rules/armes', { method: 'POST', body: JSON.stringify(data) });
+export const deleteArme = (id) => request(`/rules/armes/${id}`, { method: 'DELETE' });
+
 // ============================================================================
 // LIVE BOARD (phase 2)
 // ============================================================================
