@@ -63,6 +63,30 @@ function Card({ children, className = '' }) {
   );
 }
 
+// Recursive: a capacité that itself grants a further borrowed pick (e.g. Augustin's Voie du
+// Mage rang 1 → Voie du Gnome's "Don étrange" → Voie de l'envoûteur's "Injonction") nests to
+// arbitrary depth, not just one level — each nested voie's own capacité may have its own
+// nestedVoiesByCapacite entry in turn.
+function NestedCapacites({ parentCapaciteId, nestedVoiesByCapacite, level, character }) {
+  const nested = nestedVoiesByCapacite[parentCapaciteId];
+  if (!nested?.length) return null;
+  return nested.map((nv) => (
+    <ul key={nv.voie_id} className="mt-1.5 ml-3 pl-2 border-l-2 border-[var(--border)] flex flex-col gap-1.5">
+      {nv.capacites?.map((nc) => (
+        <li key={nc.id}>
+          <span className="text-xs text-[var(--text-secondary)]">via {nv.name} — </span>
+          <span className="font-medium">
+            {nc.name}
+            {nc.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
+          </span>
+          <CapaciteSummary capacite={nc} level={level} voieId={nv.voie_id} character={character} />
+          <NestedCapacites parentCapaciteId={nc.id} nestedVoiesByCapacite={nestedVoiesByCapacite} level={level} character={character} />
+        </li>
+      ))}
+    </ul>
+  ));
+}
+
 function StepButton({ onClick, disabled, children, primary = true }) {
   return (
     <button
@@ -299,15 +323,20 @@ export default function CharacterSheet() {
     // own column, only inside caracteristiques.
     const artefactMax = (character.pm_max || 0) + (character.caracteristiques?.VOL || 0);
     const artefactCurrent = character.custom_data?.artefact_reserve_current || 0;
-    // Moves mana between Augustin's own PM pool and the artefact's external reserve — delta>0
-    // stores (PM drops, reserve rises), delta<0 withdraws (PM rises, reserve drops). Each side
-    // is clamped independently to its own max/min, matching how a player would just eyeball it
-    // at the table rather than the app enforcing an exact 1:1 INT-test-gated transfer.
-    const handleArtefactTransfer = (delta) => {
-      const nextReserve = Math.max(0, Math.min(artefactMax, artefactCurrent + delta));
+    // Draining himself into the artefact (rang 1) is the controlled half of the mechanic — he
+    // bleeds mana out one point at a time to stay under the threshold on purpose.
+    const handleArtefactStore = (delta) => {
+      const nextReserve = Math.min(artefactMax, artefactCurrent + delta);
       const actualDelta = nextReserve - artefactCurrent;
-      const nextPm = Math.max(0, Math.min(character.pm_max, character.pm_current - actualDelta));
+      const nextPm = Math.max(0, character.pm_current - actualDelta);
       updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: nextReserve } }).then(refreshCharacter);
+    };
+    // Recovering mana is the uncontrolled half at rang 1: using the artefact dumps its ENTIRE
+    // reserve back into him in one go, not a selectable amount — whatever doesn't fit under
+    // pm_max simply vanishes (lost) rather than staying safely stored for a later attempt.
+    const handleArtefactEmpty = () => {
+      const nextPm = Math.min(character.pm_max, character.pm_current + artefactCurrent);
+      updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: 0 } }).then(refreshCharacter);
     };
 
     return (
@@ -390,16 +419,16 @@ export default function CharacterSheet() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--text-secondary)]">🏺 Réserve de l'artéfact</span>
               <button
-                onClick={() => handleArtefactTransfer(-1)}
+                onClick={handleArtefactEmpty}
                 disabled={artefactCurrent <= 0}
-                title="Récupérer 1 PM depuis l'artéfact"
-                className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40"
+                title="Vider l'artéfact d'un coup (rang 1 : tout ce qui dépasse le PM max est perdu)"
+                className="px-2 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40 text-xs"
               >
-                ←
+                Vider ↩
               </button>
               <span className="font-semibold text-sm w-14 text-center">{artefactCurrent}/{artefactMax}</span>
               <button
-                onClick={() => handleArtefactTransfer(1)}
+                onClick={() => handleArtefactStore(1)}
                 disabled={artefactCurrent >= artefactMax || character.pm_current <= 0}
                 title="Stocker 1 PM dans l'artéfact"
                 className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40"
@@ -462,20 +491,12 @@ export default function CharacterSheet() {
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
                               <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} />
-                              {nestedVoiesByCapacite[c.id]?.map((nv) => (
-                                <ul key={nv.voie_id} className="mt-1.5 ml-3 pl-2 border-l-2 border-[var(--border)] flex flex-col gap-1.5">
-                                  {nv.capacites?.map((nc) => (
-                                    <li key={nc.id}>
-                                      <span className="text-xs text-[var(--text-secondary)]">via {nv.name} — </span>
-                                      <span className="font-medium">
-                                        {nc.name}
-                                        {nc.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
-                                      </span>
-                                      <CapaciteSummary capacite={nc} level={character.level} voieId={nv.voie_id} character={character} />
-                                    </li>
-                                  ))}
-                                </ul>
-                              ))}
+                              <NestedCapacites
+                                parentCapaciteId={c.id}
+                                nestedVoiesByCapacite={nestedVoiesByCapacite}
+                                level={character.level}
+                                character={character}
+                              />
                             </li>
                           ))}
                         </ul>
