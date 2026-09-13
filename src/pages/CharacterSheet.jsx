@@ -1831,9 +1831,12 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
 
 // Same health-tier coloring as the board HUD (green >=60%, amber 30-60%, red <30%, full red +
 // "K.O." at 0) so a GM scanning the sheet gets the same at-a-glance read as on the live board.
+// max===0 (e.g. PM for a non-caster) is a different case entirely — no resource pool at all,
+// not "depleted" — so it never gets the K.O. treatment, just a plain 0/0.
 function statBarColor(current, max) {
+  if (max <= 0) return 'bg-[var(--border)]';
   if (current <= 0) return 'bg-red-500';
-  const pct = max > 0 ? (current / max) * 100 : 0;
+  const pct = (current / max) * 100;
   if (pct >= 60) return 'bg-emerald-500';
   if (pct >= 30) return 'bg-amber-500';
   return 'bg-red-400';
@@ -1841,6 +1844,7 @@ function statBarColor(current, max) {
 
 function StatAdjuster({ label, current, max, onChange }) {
   const [busy, setBusy] = useState(false);
+  const isDown = max > 0 && current <= 0;
 
   const adjust = async (delta) => {
     const next = Math.max(0, Math.min(max, current + delta));
@@ -1868,8 +1872,8 @@ function StatAdjuster({ label, current, max, onChange }) {
         >
           −
         </button>
-        <span className={`font-bold text-lg w-14 ${current <= 0 ? 'text-red-500' : ''}`}>
-          {current <= 0 ? 'K.O.' : `${current}/${max}`}
+        <span className={`font-bold text-lg w-14 ${isDown ? 'text-red-500' : ''}`}>
+          {isDown ? 'K.O.' : `${current}/${max}`}
         </span>
         <button
           onClick={() => adjust(1)}
@@ -1882,7 +1886,7 @@ function StatAdjuster({ label, current, max, onChange }) {
       <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
-          style={{ width: `${current <= 0 ? 100 : pct}%` }}
+          style={{ width: `${isDown ? 100 : pct}%` }}
         />
       </div>
     </div>
