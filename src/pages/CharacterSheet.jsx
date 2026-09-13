@@ -14,6 +14,17 @@ const CARAC_LABELS = {
   CHA: 'Charisme', INT: 'Intelligence', VOL: 'Volonté',
 };
 
+// Voie de l'Humain — rang 1 "Diversité" (p.46) : origine géographique/sociale à choisir,
+// qui donne +3 à deux domaines narratifs liés (non modélisés ici) + 1 PC (calculé côté backend).
+const HUMAN_ORIGINS = [
+  'Montagnard (escalade, résistance au froid)',
+  'Citadin (commerce, résistance aux maladies)',
+  'Campagnard (météorologie, équitation)',
+  'Riverain (natation, navigation)',
+  'Sauvage (chasser, pister)',
+  'Nomade (orientation, résistance à la chaleur/au froid)',
+];
+
 // Dés évolutifs (d4°) : d4 aux niveaux 1-5, puis +1 cran tous les 3 niveaux à partir de 6 (p.43).
 const DICE_PROGRESSION = ['d4', 'd6', 'd8', 'd10', 'd12'];
 function evolvingDieForLevel(level) {
@@ -73,6 +84,7 @@ export default function CharacterSheet() {
   const [hybridCreation, setHybridCreation] = useState(false);
   const [allProfilVoies, setAllProfilVoies] = useState([]);
   const [hybridPickId, setHybridPickId] = useState('');
+  const [origineHumaine, setOrigineHumaine] = useState('');
   const [equipement, setEquipement] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -206,6 +218,7 @@ export default function CharacterSheet() {
         level: 1,
         caracteristiques,
         equipement: equipement.split(',').map((s) => s.trim()).filter(Boolean),
+        ...(peupleVoie?.code === 'peuple-humain' ? { origine_humaine: origineHumaine.trim() } : {}),
       });
 
       const voiesToAdd = [
@@ -251,6 +264,9 @@ export default function CharacterSheet() {
             <p className="text-[var(--text-secondary)]">
               Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
             </p>
+            {character.origine_humaine && (
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">Origine : {character.origine_humaine}</p>
+            )}
           </div>
           {isGm && (
             <button
@@ -556,6 +572,32 @@ export default function CharacterSheet() {
             </div>
           )}
 
+          {peupleVoie?.code === 'peuple-humain' && (
+            <div className="border-b border-[var(--border)] pb-3 mb-1">
+              <p className="text-sm mb-2">
+                Diversité — origine géographique ou sociale (+3 à deux domaines liés, +1 PC) :
+              </p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {HUMAN_ORIGINS.map((o) => (
+                  <button
+                    key={o}
+                    onClick={() => setOrigineHumaine(o)}
+                    className={`px-2 py-1 rounded border text-sm ${origineHumaine === o ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Ou un gagne-pain personnalisé (ex: forgeron, scribe, pickpocket...)"
+                value={HUMAN_ORIGINS.includes(origineHumaine) ? '' : origineHumaine}
+                onChange={(e) => setOrigineHumaine(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+              />
+            </div>
+          )}
+
           {voieDuMage && peupleVoie && (
             <div className="border-b border-[var(--border)] pb-3 mb-1">
               <p className="text-sm mb-2">
@@ -638,7 +680,10 @@ export default function CharacterSheet() {
             <StepButton onClick={() => setStep(3)} primary={false}>Retour</StepButton>
             <StepButton
               onClick={() => setStep(5)}
-              disabled={selectedVoieIds.length !== 2 || (demiElfeChoices && !peupleVoie)}
+              disabled={
+                selectedVoieIds.length !== 2 || (demiElfeChoices && !peupleVoie) ||
+                (peupleVoie?.code === 'peuple-humain' && !origineHumaine.trim())
+              }
             >
               Suivant
             </StepButton>
@@ -956,6 +1001,7 @@ function GmEditPanel({ character, profils, peuples, onRefresh }) {
     pc_bonus_orphan: character.pc_bonus_orphan,
     dr_bonus_orphan: character.dr_bonus_orphan,
     pm_bonus_orphan: character.pm_bonus_orphan,
+    origine_humaine: character.origine_humaine || '',
   });
 
   useEffect(() => {
@@ -1070,6 +1116,19 @@ function GmEditPanel({ character, profils, peuples, onRefresh }) {
             ))}
           </div>
         </div>
+
+        {peuples.find((p) => p.id === form.peuple_id)?.code === 'humain' && (
+          <label className="text-sm flex flex-col gap-1">
+            Origine (Diversité, +1 PC déjà inclus dans le calcul)
+            <input
+              type="text"
+              value={form.origine_humaine}
+              onChange={(e) => setField('origine_humaine', e.target.value)}
+              placeholder="ex: Citadin (commerce, résistance aux maladies)"
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+          </label>
+        )}
 
         <div>
           <p className="text-sm mb-1">Grand livre / ressources brutes</p>
