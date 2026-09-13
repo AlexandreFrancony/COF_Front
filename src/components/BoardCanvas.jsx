@@ -107,7 +107,10 @@ function zoneShapeStyle(zone) {
 
 // A filled bar with the numeric value written on top — used for PV/PM, which have a max.
 // Falls back to a plain chip (no fill) for a flat resource like Chance, which has none.
-function StatBar({ label, current, max, tone }) {
+// PV is colored by remaining-health tier (not by player/enemy — the left/right split and the
+// card's own accent border already say who's who) so it reads as a wound gauge at a glance;
+// PM gets its own distinct hue purely to be visually unmistakable from the PV row above it.
+function StatBar({ label, current, max, kind = 'pv' }) {
   if (max == null) {
     return (
       <div className="flex items-center justify-between gap-2 text-[10px] leading-none">
@@ -120,10 +123,17 @@ function StatBar({ label, current, max, tone }) {
   // an empty bar alone reads the same as "no data", so it gets its own unmistakable state.
   const isDown = current <= 0;
   const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
-  const barColor = isDown ? 'bg-red-600' : tone === 'enemy' ? 'bg-red-500/70' : 'bg-[var(--accent)]';
+  let barColor;
+  if (isDown) barColor = 'bg-red-600';
+  else if (kind === 'pm') barColor = 'bg-indigo-400';
+  else barColor = pct >= 60 ? 'bg-emerald-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500';
+
   return (
     <div className={`relative w-28 h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
-      <div className={`absolute inset-y-0 left-0 ${barColor}`} style={{ width: isDown ? '100%' : `${pct}%` }} />
+      <div
+        className={`absolute inset-y-0 left-0 transition-[width,background-color] duration-300 ease-out ${barColor}`}
+        style={{ width: isDown ? '100%' : `${pct}%` }}
+      />
       <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[10px] font-semibold text-white drop-shadow">
         <span>{label}</span>
         <span>{isDown ? 'K.O.' : `${current}/${max}`}</span>
@@ -133,8 +143,14 @@ function StatBar({ label, current, max, tone }) {
 }
 
 function HudCard({ entry, tone }) {
+  // Ties the card back to its pawn on the map: the token's own color when it has one, else a
+  // sensible default per side (still distinguishes players from enemies at a glance).
+  const accentColor = entry.color || (tone === 'enemy' ? '#ef4444' : '#c65d3b');
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-black/55 backdrop-blur-sm text-white">
+    <div
+      className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md"
+      style={{ borderLeftColor: accentColor }}
+    >
       <div
         className="w-8 h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center"
         style={{
@@ -146,8 +162,8 @@ function HudCard({ entry, tone }) {
         <span className="text-[11px] font-semibold leading-none truncate max-w-[9rem]" title={entry.character_name || entry.label}>
           {entry.character_name || entry.label}
         </span>
-        <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} tone={tone} />
-        {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} tone={tone} />}
+        <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} kind="pv" />
+        {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} kind="pm" />}
         <div className="flex gap-2 text-[10px] opacity-80">
           <span>Chance {entry.points_chance}</span>
           <span>Déf {entry.defense}</span>
