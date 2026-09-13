@@ -71,8 +71,8 @@ function Card({ children, className = '', title, headerAction }) {
   return (
     <div className={`cof-plate rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] ${title ? '' : 'p-4'} ${className}`}>
       {title && (
-        <div className="cof-plate-head px-4 py-2 flex items-center justify-between gap-2">
-          <span>{title}</span>
+        <div className="cof-plate-head px-4 py-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span className="min-w-0">{title}</span>
           {headerAction}
         </div>
       )}

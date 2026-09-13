@@ -118,6 +118,13 @@ body {
   text-transform: uppercase;
 }
 
+@media (max-width: 420px) {
+  .cof-sheet .cof-plate-head {
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+  }
+}
+
 .cof-sheet .cof-vital {
   background: var(--cof-panel);
   border: 1px solid var(--cof-gold-line);
