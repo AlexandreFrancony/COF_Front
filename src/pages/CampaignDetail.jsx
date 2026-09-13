@@ -217,11 +217,19 @@ export default function CampaignDetail() {
                 <li key={c.id} className="flex items-center gap-2">
                   <Link
                     to={`/characters/${c.id}`}
-                    className="flex-1 block p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                    className="flex-1 flex items-center gap-2 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
                   >
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-sm text-[var(--text-secondary)] ml-2">
-                      {c.is_npc ? 'PNJ' : c.user_id ? `Niveau ${c.level}` : 'Pas encore invité'}
+                    <span
+                      className="w-8 h-8 shrink-0 rounded-full border border-[var(--border)] bg-[var(--bg-input)] bg-cover bg-center flex items-center justify-center"
+                      style={{ backgroundImage: c.avatar_url ? `url(${c.avatar_url})` : undefined }}
+                    >
+                      {!c.avatar_url && (c.avatar_emoji || null)}
+                    </span>
+                    <span>
+                      <span className="font-medium">{c.name}</span>
+                      <span className="text-sm text-[var(--text-secondary)] ml-2">
+                        {c.is_npc ? 'PNJ' : c.user_id ? `Niveau ${c.level}` : 'Pas encore invité'}
+                      </span>
                     </span>
                   </Link>
                   {isGm && (

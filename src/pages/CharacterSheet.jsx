@@ -210,6 +210,7 @@ export default function CharacterSheet() {
   const [hybridPickId, setHybridPickId] = useState('');
   const [origineHumaine, setOrigineHumaine] = useState('');
   const [equipement, setEquipement] = useState('');
+  const [monnaie, setMonnaie] = useState({ pieces_cuivre: 0, pieces_argent: 0, pieces_or: 0, pieces_platine: 0 });
   const [saving, setSaving] = useState(false);
   const [armures, setArmures] = useState([]);
   const [armes, setArmes] = useState([]);
@@ -368,6 +369,7 @@ export default function CharacterSheet() {
         level: 1,
         caracteristiques,
         equipement: equipement.split(',').map((s) => s.trim()).filter(Boolean),
+        ...monnaie,
         ...(peupleVoie?.code === 'peuple-humain' ? { origine_humaine: origineHumaine.trim() } : {}),
       });
 
@@ -670,6 +672,8 @@ export default function CharacterSheet() {
               onArmesChange={setArmes}
               onRefresh={refreshCharacter}
             />
+
+            <EquipementCard character={character} onRefresh={refreshCharacter} />
           </div>
         </div>
         </>
@@ -1073,13 +1077,35 @@ export default function CharacterSheet() {
       {step === 5 && (
         <Card className="flex flex-col gap-3">
           <h2 className="font-semibold">5. Équipement</h2>
-          <textarea
-            placeholder="Équipement, séparé par des virgules (ex: épée courte, sac d'aventurier, couverture...)"
-            value={equipement}
-            onChange={(e) => setEquipement(e.target.value)}
-            rows={4}
-            className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
-          />
+
+          <div>
+            <p className="text-sm mb-1">Bourse</p>
+            <div className="grid grid-cols-4 gap-2">
+              {MONNAIE_FIELDS.map(([field, emoji, label]) => (
+                <label key={field} className="flex flex-col items-center gap-1 text-xs">
+                  <span className="text-[var(--text-secondary)]">{emoji} {label}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={monnaie[field]}
+                    onChange={(e) => setMonnaie((m) => ({ ...m, [field]: Number(e.target.value) || 0 }))}
+                    className="w-full px-1 py-1 text-center rounded bg-[var(--bg-input)] border border-[var(--border)]"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm mb-1">Reste de l'équipement</p>
+            <textarea
+              placeholder="Équipement, séparé par des virgules (ex: épée courte, sac d'aventurier, couverture...)"
+              value={equipement}
+              onChange={(e) => setEquipement(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+          </div>
           <div className="flex gap-2">
             <StepButton onClick={() => setStep(4)} primary={false}>Retour</StepButton>
             <StepButton onClick={finalizeCreation} disabled={saving}>
@@ -1952,6 +1978,89 @@ function armeDamageDisplay(arme, character) {
     return `${arme.damage_dice} ${forVal >= 0 ? '+' : ''}${forVal} (FOR)`;
   }
   return arme.damage_dice;
+}
+
+const MONNAIE_FIELDS = [
+  ['pieces_cuivre', '🟤', 'Cuivre'],
+  ['pieces_argent', '⚪', 'Argent'],
+  ['pieces_or', '🟡', 'Or'],
+  ['pieces_platine', '💠', 'Platine'],
+];
+
+// Currency (p.23) is tracked as 4 separate piles, deliberately apart from the free-text
+// equipement list below it — no conversion between denominations is modeled, each field is
+// edited independently. Both this and the equipement list are editable by anyone with access
+// (owner or GM), same as armor/weapon selection — not gated behind Mode édition.
+function EquipementCard({ character, onRefresh }) {
+  const [editingList, setEditingList] = useState(false);
+  const [listText, setListText] = useState((character.equipement || []).join(', '));
+
+  const saveMonnaie = async (field, value) => {
+    try {
+      await updateCharacter(character.id, { [field]: Number(value) || 0 });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const saveList = async () => {
+    setEditingList(false);
+    try {
+      await updateCharacter(character.id, { equipement: listText.split(',').map((s) => s.trim()).filter(Boolean) });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="font-semibold mb-2">🎒 Équipement</h2>
+
+      <p className="text-xs text-[var(--text-secondary)] mb-1">Bourse</p>
+      <div className="grid grid-cols-4 gap-2 mb-3">
+        {MONNAIE_FIELDS.map(([field, emoji, label]) => (
+          <label key={field} className="flex flex-col items-center gap-1 text-xs">
+            <span className="text-[var(--text-secondary)]">{emoji} {label}</span>
+            <input
+              type="number"
+              min={0}
+              defaultValue={character[field] || 0}
+              onBlur={(e) => saveMonnaie(field, e.target.value)}
+              className="w-full px-1 py-1 text-center rounded bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+          </label>
+        ))}
+      </div>
+
+      <p className="text-xs text-[var(--text-secondary)] mb-1">Reste de l'équipement</p>
+      {editingList ? (
+        <textarea
+          value={listText}
+          onChange={(e) => setListText(e.target.value)}
+          onBlur={saveList}
+          placeholder="Équipement, séparé par des virgules..."
+          rows={3}
+          autoFocus
+          className="w-full px-2 py-1.5 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+        />
+      ) : (
+        <div
+          onClick={() => setEditingList(true)}
+          className="text-sm cursor-text rounded-lg border border-transparent hover:border-[var(--border)] px-2 py-1.5 -mx-2"
+        >
+          {character.equipement?.length > 0 ? (
+            <ul className="list-disc list-inside">
+              {character.equipement.map((item, i) => <li key={i}>{item}</li>)}
+            </ul>
+          ) : (
+            <p className="text-[var(--text-secondary)] italic">Aucun équipement noté — cliquer pour ajouter.</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 // A character can wield up to two weapons (principale/secondaire — dual-wielding etc.,
