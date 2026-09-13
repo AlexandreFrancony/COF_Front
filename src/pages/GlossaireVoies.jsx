@@ -32,7 +32,7 @@ function VoieEntry({ voie, subtitle, highlighted }) {
       id={`voie-${voie.id}`}
       className={`p-4 rounded-xl bg-[var(--bg-card)] border ${highlighted ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)]'}`}
     >
-      <h3 className="font-semibold text-[var(--accent)]">
+      <h3 className="cof-display font-semibold text-[var(--accent)]">
         {voie.name}
         {subtitle && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">{subtitle}</span>}
       </h3>

@@ -74,7 +74,7 @@ export default function InviteAccept() {
   if (isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
-        <div className="w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4 text-center">
+        <div className="cof-plate w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4 text-center">
           <div>
             <h1 className="text-2xl font-bold text-[var(--accent)]">Rejoindre {invite.campaign_name}</h1>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -100,7 +100,7 @@ export default function InviteAccept() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4"
+        className="cof-plate w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4"
       >
         <div className="text-center">
           <h1 className="text-2xl font-bold text-[var(--accent)]">Rejoindre {invite.campaign_name}</h1>

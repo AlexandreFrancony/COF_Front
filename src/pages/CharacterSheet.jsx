@@ -65,8 +65,7 @@ function getFacette(character) {
 
 // title/headerAction are optional: omitted, Card renders exactly as before (the creation
 // wizard's own inline <h2> usages stay untouched). Passed, it gets the "livre" plate treatment —
-// a solid gold title bar instead of a plain heading — but only inside the .cof-sheet scope
-// (finished character sheet); the cof-plate/cof-plate-head classes are inert everywhere else.
+// a solid gold title bar with cut Art Déco corners instead of a plain heading.
 function Card({ children, className = '', title, headerAction }) {
   return (
     <div className={`cof-plate rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] ${title ? '' : 'p-4'} ${className}`}>
@@ -465,7 +464,7 @@ export default function CharacterSheet() {
     };
 
     return (
-      <div className="cof-sheet p-6 max-w-6xl mx-auto flex flex-col gap-4">
+      <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <CharacterAvatar character={character} onRefresh={refreshCharacter} />

@@ -69,7 +69,7 @@ export default function Campaigns() {
         {showForm && (
           <form
             onSubmit={handleCreate}
-            className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3"
+            className="cof-plate p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3"
           >
             <input
               type="text"
@@ -104,7 +104,7 @@ export default function Campaigns() {
               <li key={c.id}>
                 <Link
                   to={`/campaigns/${c.id}`}
-                  className="block p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                  className="cof-plate block p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
                 >
                   <h2 className="font-semibold text-[var(--accent)]">{c.name}</h2>
                   {c.description && (

@@ -27,7 +27,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4"
+        className="cof-plate w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4"
       >
         <h1 className="text-2xl font-bold text-[var(--accent)] text-center">COF — Connexion</h1>
 
