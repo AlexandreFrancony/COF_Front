@@ -14,6 +14,10 @@ const CARAC_LABELS = {
   AGI: 'Agilité', CON: 'Constitution', FOR: 'Force', PER: 'Perception',
   CHA: 'Charisme', INT: 'Intelligence', VOL: 'Volonté',
 };
+// Quick-scan emoji for stats/caracs — purely cosmetic, no meaning encoded beyond "PV vs PM vs
+// Chance etc. look different at a glance".
+const CARAC_EMOJI = { AGI: '🤸', CON: '🫀', FOR: '💪', PER: '👁️', CHA: '✨', INT: '🧠', VOL: '🔥' };
+const STAT_EMOJI = { PV: '❤️', PM: '🔮', Chance: '🍀', DR: '💤', Défense: '🛡️', Initiative: '⚡' };
 
 // Voie de l'Humain — rang 1 "Diversité" (p.46) : origine géographique/sociale à choisir,
 // qui donne +3 à deux domaines narratifs liés (non modélisés ici) + 1 PC (calculé côté backend).
@@ -309,21 +313,24 @@ export default function CharacterSheet() {
         <>
         <Card className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
           <StatAdjuster
-            label="PV" current={character.pv_current} max={character.pv_max}
+            label={`${STAT_EMOJI.PV} PV`} current={character.pv_current} max={character.pv_max}
             onChange={(v) => updateCharacter(id, { pv_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
-            label="PM" current={character.pm_current} max={character.pm_max} koLabel={false}
+            label={`${STAT_EMOJI.PM} PM`} current={character.pm_current} max={character.pm_max} koLabel={false}
             onChange={(v) => updateCharacter(id, { pm_current: v }).then(refreshCharacter)}
           />
+          <StatAdjuster
+            label={`${STAT_EMOJI.Chance} Chance`} current={character.points_chance_current} max={character.points_chance} koLabel={false}
+            onChange={(v) => updateCharacter(id, { points_chance_current: v }).then(refreshCharacter)}
+          />
           {[
-            ['Chance', character.points_chance],
             ['DR', character.de_recuperation],
             ['Défense', character.defense],
             ['Initiative', character.initiative],
           ].map(([label, value]) => (
             <div key={label}>
-              <div className="text-xs text-[var(--text-secondary)]">{label}</div>
+              <div className="text-xs text-[var(--text-secondary)]">{STAT_EMOJI[label]} {label}</div>
               <div className="font-bold text-lg">{value}</div>
             </div>
           ))}
@@ -395,7 +402,7 @@ export default function CharacterSheet() {
               <div className="grid grid-cols-4 gap-2 text-center text-sm">
                 {CARACS.map((c) => (
                   <div key={c}>
-                    <div className="text-[var(--text-secondary)]">{c}</div>
+                    <div className="text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</div>
                     <div className="font-bold">{character.caracteristiques[c] >= 0 ? '+' : ''}{character.caracteristiques[c]}</div>
                   </div>
                 ))}
@@ -489,7 +496,7 @@ export default function CharacterSheet() {
           <div className="grid grid-cols-4 gap-2 text-center text-sm mb-2">
             {CARACS.map((c) => (
               <div key={c}>
-                <div className="text-[var(--text-secondary)]">{c}</div>
+                <div className="text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</div>
                 <div className="font-bold">{caracteristiques[c] >= 0 ? '+' : ''}{caracteristiques[c]}</div>
               </div>
             ))}
@@ -1237,7 +1244,7 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
           <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
             {CARACS.map((c) => (
               <label key={c} className="text-xs flex flex-col items-center gap-1">
-                {c}
+                {CARAC_EMOJI[c]} {c}
                 <input
                   type="number"
                   value={form.caracteristiques[c]}
