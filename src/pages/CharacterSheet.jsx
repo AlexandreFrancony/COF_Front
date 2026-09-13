@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
-  getCharacter, getProfils, getPeuples, getVoies,
+  getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme,
@@ -132,6 +132,7 @@ export default function CharacterSheet() {
   const [armures, setArmures] = useState([]);
   const [armes, setArmes] = useState([]);
   const [expandedVoies, setExpandedVoies] = useState(new Set());
+  const [campaign, setCampaign] = useState(null);
 
   useEffect(() => {
     Promise.all([getCharacter(id), getProfils(), getPeuples(), getArmures(), getArmes()])
@@ -143,6 +144,7 @@ export default function CharacterSheet() {
         setArmes(armesData);
         if (char.profil_id) setProfilId(char.profil_id);
         if (char.peuple_id) setPeupleId(char.peuple_id);
+        if (char.campaign_id) getCampaign(char.campaign_id).then(setCampaign).catch(() => {});
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
@@ -353,6 +355,11 @@ export default function CharacterSheet() {
       <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
+            {campaign && (
+              <Link to={`/campaigns/${campaign.id}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
+                ← {campaign.name}
+              </Link>
+            )}
             <h1 className="text-2xl font-bold text-[var(--accent)]">
               {character.name}
               {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
