@@ -276,7 +276,17 @@ export default function CharacterSheet() {
 
   // --- Finished sheet view ---
   if (character.profil_id && character.pv_max > 0) {
-    const allVoiesIds = character.voies?.map((v) => v.voie_id) || [];
+    // A voie added purely to lend one borrowed capacité (e.g. Augustin's Injonction, fetched
+    // via his Gnome peuple capacité) carries nested_under_capacite_id and is rendered indented
+    // under that capacité instead of as its own top-level accordion entry.
+    const topLevelVoies = character.voies?.filter((v) => !v.nested_under_capacite_id) || [];
+    const nestedVoiesByCapacite = {};
+    for (const v of character.voies || []) {
+      if (v.nested_under_capacite_id) {
+        (nestedVoiesByCapacite[v.nested_under_capacite_id] ??= []).push(v);
+      }
+    }
+    const allVoiesIds = topLevelVoies.map((v) => v.voie_id);
     const allExpanded = allVoiesIds.length > 0 && allVoiesIds.every((vid) => expandedVoies.has(vid));
     const toggleVoieExpanded = (voieId) => setExpandedVoies((prev) => {
       const next = new Set(prev);
@@ -416,7 +426,7 @@ export default function CharacterSheet() {
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                {character.voies?.map((v) => {
+                {topLevelVoies.map((v) => {
                   const isOpen = expandedVoies.has(v.voie_id);
                   const capCount = v.capacites?.length || 0;
                   const isInactiveFacette = facette?.inactiveVoieIds.includes(v.voie_id);
@@ -452,6 +462,20 @@ export default function CharacterSheet() {
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
                               <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} />
+                              {nestedVoiesByCapacite[c.id]?.map((nv) => (
+                                <ul key={nv.voie_id} className="mt-1.5 ml-3 pl-2 border-l-2 border-[var(--border)] flex flex-col gap-1.5">
+                                  {nv.capacites?.map((nc) => (
+                                    <li key={nc.id}>
+                                      <span className="text-xs text-[var(--text-secondary)]">via {nv.name} — </span>
+                                      <span className="font-medium">
+                                        {nc.name}
+                                        {nc.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
+                                      </span>
+                                      <CapaciteSummary capacite={nc} level={character.level} voieId={nv.voie_id} character={character} />
+                                    </li>
+                                  ))}
+                                </ul>
+                              ))}
                             </li>
                           ))}
                         </ul>
@@ -1201,6 +1225,11 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
   const [allVoies, setAllVoies] = useState([]);
   const [addVoieId, setAddVoieId] = useState('');
   const [addVoieRang, setAddVoieRang] = useState(1);
+  // Borrow-a-single-capacité mode (e.g. Gnome's "Don étrange" fetching one ensorceleur rang-1
+  // capacité) — when a capacité is picked, only it is kept from the voie and it's rendered
+  // nested under whichever of the character's own capacités granted the pick.
+  const [addVoieOnlyCapId, setAddVoieOnlyCapId] = useState('');
+  const [addVoieNestUnderId, setAddVoieNestUnderId] = useState('');
 
   const [form, setForm] = useState({
     profil_id: character.profil_id,
@@ -1264,10 +1293,14 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
         obtained_at_level: character.level,
         spend_points: false,
         rang: Number(addVoieRang) || 1,
+        only_capacite_id: addVoieOnlyCapId ? Number(addVoieOnlyCapId) : null,
+        nested_under_capacite_id: addVoieNestUnderId ? Number(addVoieNestUnderId) : null,
       });
       await onRefresh();
       setAddVoieId('');
       setAddVoieRang(1);
+      setAddVoieOnlyCapId('');
+      setAddVoieNestUnderId('');
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -1277,6 +1310,8 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
 
   const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const availableVoies = allVoies.filter((v) => !ownedVoieIds.has(v.id));
+  const addVoieCapacites = allVoies.find((v) => v.id === Number(addVoieId))?.capacites || [];
+  const ownCapacites = (character.voies || []).flatMap((v) => v.capacites || []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1453,6 +1488,36 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
           />
           <StepButton onClick={handleAddVoie} disabled={busy || !addVoieId}>Ajouter</StepButton>
         </div>
+        {addVoieId && (
+          <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-[var(--border)] mt-1">
+            <label className="text-xs text-[var(--text-secondary)] flex flex-col gap-1">
+              Ne garder qu'une capacité (ex: un choix de rang 1 d'ailleurs)
+              <select
+                value={addVoieOnlyCapId}
+                onChange={(e) => setAddVoieOnlyCapId(e.target.value)}
+                className="min-w-[220px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+              >
+                <option value="">— toute la voie —</option>
+                {addVoieCapacites.map((c) => (
+                  <option key={c.id} value={c.id}>Rang {c.rang} — {c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-[var(--text-secondary)] flex flex-col gap-1">
+              Imbriquer sous (affichage uniquement)
+              <select
+                value={addVoieNestUnderId}
+                onChange={(e) => setAddVoieNestUnderId(e.target.value)}
+                className="min-w-[220px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+              >
+                <option value="">— entrée normale, pas imbriquée —</option>
+                {ownCapacites.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </Card>
     </div>
   );
