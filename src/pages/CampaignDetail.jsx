@@ -484,6 +484,7 @@ function ScenarioItem({
   onSetBackground, onAddToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onLaunch,
 }) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(scenario.notes || '');
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [selectedToken, setSelectedToken] = useState(null);
@@ -497,6 +498,92 @@ function ScenarioItem({
     onAddToken({ label: newTokenLabel.trim() });
     setNewTokenLabel('');
   };
+
+  // Shared between the small inline preview and the enlarged modal (only one renders at a
+  // time) — the canvas itself is identical, it just ends up bigger inside the modal's wider
+  // max-w-5xl container versus the narrow inline card.
+  const prepBoard = () => (
+    <>
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-[var(--text-secondary)]">Fond :</span>
+        <select
+          value={scenario.background_media_id || ''}
+          onChange={(e) => onSetBackground(Number(e.target.value))}
+          className="flex-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+        >
+          <option value="" disabled>Choisir dans la bibliothèque...</option>
+          {mediaLibrary.map((m) => (
+            <option key={m.id} value={m.id}>{m.label || m.url}</option>
+          ))}
+        </select>
+        {!expanded && (
+          <button
+            onClick={() => setExpanded(true)}
+            title="Ouvrir en plus grand pour positionner les pions plus précisément"
+            className="shrink-0 px-2 py-1 text-xs rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            ⛶ Agrandir
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ aspectRatio: '16 / 9' }}>
+        <BoardCanvas
+          board={previewBoard}
+          isGm
+          className="relative w-full h-full bg-[var(--bg-input)]"
+          selectedToken={selectedToken}
+          onSelectToken={setSelectedToken}
+          onTokenDragEnd={(tokenId, x, y) => onMoveToken(tokenId, x, y)}
+          onBackgroundClick={() => setSelectedToken(null)}
+        />
+      </div>
+
+      {selectedToken && (
+        <div className="flex items-center gap-3 text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
+          <span className="font-medium flex-1">{selectedToken.label}</span>
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={selectedToken.visible_to_players}
+              onChange={() => { onToggleTokenVisible(selectedToken); setSelectedToken(null); }}
+            />
+            Visible aux joueurs
+          </label>
+          <button
+            onClick={() => { onDeleteToken(selectedToken.id); setSelectedToken(null); }}
+            className="text-red-500 hover:underline"
+          >
+            Supprimer ce pion
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {tokenlessCharacters.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => onAddToken({ label: c.name, character_id: c.id })}
+            className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            + {c.name}
+          </button>
+        ))}
+        <form onSubmit={handleAddToken} className="flex gap-1">
+          <input
+            type="text"
+            placeholder="Nom du pion (PNJ)"
+            value={newTokenLabel}
+            onChange={(e) => setNewTokenLabel(e.target.value)}
+            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]"
+          />
+          <button type="submit" className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]">
+            Ajouter un pion
+          </button>
+        </form>
+      </div>
+    </>
+  );
 
   return (
     <div className="rounded-lg bg-[var(--bg-card)] border border-[var(--border)] p-3">
@@ -530,75 +617,29 @@ function ScenarioItem({
             rows={4}
             className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           />
+          {!expanded && prepBoard()}
+        </div>
+      )}
 
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-[var(--text-secondary)]">Fond :</span>
-            <select
-              value={scenario.background_media_id || ''}
-              onChange={(e) => onSetBackground(Number(e.target.value))}
-              className="flex-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
-            >
-              <option value="" disabled>Choisir dans la bibliothèque...</option>
-              {mediaLibrary.map((m) => (
-                <option key={m.id} value={m.id}>{m.label || m.url}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ aspectRatio: '16 / 9' }}>
-            <BoardCanvas
-              board={previewBoard}
-              isGm
-              className="relative w-full h-full bg-[var(--bg-input)]"
-              selectedToken={selectedToken}
-              onSelectToken={setSelectedToken}
-              onTokenDragEnd={(tokenId, x, y) => onMoveToken(tokenId, x, y)}
-              onBackgroundClick={() => setSelectedToken(null)}
-            />
-          </div>
-
-          {selectedToken && (
-            <div className="flex items-center gap-3 text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
-              <span className="font-medium flex-1">{selectedToken.label}</span>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={selectedToken.visible_to_players}
-                  onChange={() => { onToggleTokenVisible(selectedToken); setSelectedToken(null); }}
-                />
-                Visible aux joueurs
-              </label>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="w-full max-w-5xl flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">{scenario.name} — préparation</h3>
               <button
-                onClick={() => { onDeleteToken(selectedToken.id); setSelectedToken(null); }}
-                className="text-red-500 hover:underline"
+                onClick={() => setExpanded(false)}
+                className="px-2 py-1 text-xs rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
               >
-                Supprimer ce pion
+                ✕ Fermer
               </button>
             </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {tokenlessCharacters.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => onAddToken({ label: c.name, character_id: c.id })}
-                className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
-              >
-                + {c.name}
-              </button>
-            ))}
-            <form onSubmit={handleAddToken} className="flex gap-1">
-              <input
-                type="text"
-                placeholder="Nom du pion (PNJ)"
-                value={newTokenLabel}
-                onChange={(e) => setNewTokenLabel(e.target.value)}
-                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]"
-              />
-              <button type="submit" className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]">
-                Ajouter un pion
-              </button>
-            </form>
+            {prepBoard()}
           </div>
         </div>
       )}
