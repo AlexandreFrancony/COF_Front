@@ -217,6 +217,14 @@ export default function Board() {
     }
   };
 
+  const handleCameraResizeEnd = async (width) => {
+    try {
+      setBoard(await updateBoardCamera(campaignId, { camera_width: width }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleCameraZoom = async (delta) => {
     try {
       setBoard(await updateBoardCamera(campaignId, { camera_width_delta: delta }));
@@ -390,6 +398,7 @@ export default function Board() {
           cameraSelected={cameraSelected}
           onSelectCamera={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(true); }}
           onCameraDragEnd={handleCameraDragEnd}
+          onCameraResizeEnd={handleCameraResizeEnd}
           onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(false); }}
         />
 

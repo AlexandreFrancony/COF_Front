@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 // The board area's aspect ratio; background-size/shape percentages are relative to width and
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
@@ -185,21 +185,57 @@ function HudCard({ entry, tone, selected, onClick }) {
 // The rectangle itself never intercepts clicks (pointer-events-none) — it sits above the
 // tokens/zones layer (z-30 vs z-10) and, once resized to cover a good chunk of the board,
 // would otherwise silently steal every click meant for a pawn or zone underneath it, no
-// matter what's selected. The small "🎥 Cadre projeté" tag at its corner is the ONLY
-// interactive part: that's what the GM clicks or drags to select/move the frame.
-function CameraFrame({ board, selected, onSelect, onDragEnd }) {
-  const x = board.camera_x ?? 50;
-  const y = board.camera_y ?? 50;
-  const w = board.camera_width ?? 100;
-  // The tag sits at the frame's top-left corner, not its center, so its own drag coordinates
-  // are offset by half the frame's width/height from camera_x/y — shift by that half-width
-  // both ways: fed into the hook as the tag's starting position, and added back on drop to
-  // recover the true center that camera_x/camera_y actually store.
+// matter what's selected. Only two small handles are interactive: the "🎥 Cadre projeté" tag
+// (top-left corner) to select/move the frame, and a round handle (bottom-right corner, shown
+// only once selected) to resize it — everything else about the rectangle stays inert.
+//
+// Both handles drive a local `live` state instead of writing straight into board.camera_* —
+// dragging otherwise only moved the handle itself (a raw DOM mutation, see usePositionDrag)
+// while the rectangle stayed put until the drag-end API call round-tripped, so the frame
+// visibly lagged a beat behind the cursor. Tracking the in-progress x/y/w locally lets the
+// rectangle follow the gesture live; onDragEnd/onResizeEnd (the actual persistence) still only
+// fires once, on release.
+function CameraFrame({ board, selected, onSelect, onDragEnd, onResizeEnd }) {
+  const [live, setLive] = useState(null); // { x, y, w } while actively dragging/resizing
+  const x = live?.x ?? board.camera_x ?? 50;
+  const y = live?.y ?? board.camera_y ?? 50;
+  const w = live?.w ?? board.camera_width ?? 100;
   const cornerX = x - w / 2;
   const cornerY = y - w / 2;
-  const { ref, handlePointerDown } = usePositionDrag(true, cornerX, cornerY, (nx, ny) =>
-    onDragEnd(nx + w / 2, ny + w / 2)
-  );
+
+  // mode 'move' drags the tag (changes x/y, keeps w); 'resize' drags the corner handle
+  // (keeps the center x/y fixed, changes w to twice the handle's distance from center).
+  const startDrag = (e, mode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = e.currentTarget.parentElement;
+    const rect = container.getBoundingClientRect();
+    const startX = x, startY = y, startW = w;
+    let final = { x: startX, y: startY, w: startW };
+
+    const move = (ev) => {
+      const px = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
+      const py = Math.min(100, Math.max(0, ((ev.clientY - rect.top) / rect.height) * 100));
+      if (mode === 'move') {
+        final = { x: px, y: py, w: startW };
+      } else {
+        const nw = Math.max(10, Math.min(100, Math.max(px - startX, py - startY) * 2));
+        final = { x: startX, y: startY, w: nw };
+      }
+      setLive(final);
+    };
+
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setLive(null);
+      if (mode === 'move') onDragEnd(final.x, final.y);
+      else onResizeEnd(final.w);
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   return (
     <>
@@ -210,8 +246,7 @@ function CameraFrame({ board, selected, onSelect, onDragEnd }) {
         style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${w}%` }}
       />
       <span
-        ref={ref}
-        onPointerDown={handlePointerDown}
+        onPointerDown={(e) => startDrag(e, 'move')}
         onClick={(e) => {
           e.stopPropagation();
           onSelect();
@@ -221,6 +256,15 @@ function CameraFrame({ board, selected, onSelect, onDragEnd }) {
       >
         🎥 Cadre projeté
       </span>
+      {selected && (
+        <span
+          onPointerDown={(e) => startDrag(e, 'resize')}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute z-30 w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-[var(--accent)] cursor-nwse-resize shadow"
+          style={{ left: `${cornerX + w}%`, top: `${cornerY + w}%` }}
+          title="Redimensionner le cadre projeté"
+        />
+      )}
     </>
   );
 }
@@ -298,6 +342,7 @@ export default function BoardCanvas({
   hudPlayers = null, hudEnemies = null,
   cameraCrop = false,
   showCameraFrame = false, cameraSelected = false, onSelectCamera = () => {}, onCameraDragEnd = () => {},
+  onCameraResizeEnd = () => {},
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
@@ -356,7 +401,13 @@ export default function BoardCanvas({
       </div>
 
       {showCameraFrame && (
-        <CameraFrame board={board} selected={cameraSelected} onSelect={onSelectCamera} onDragEnd={onCameraDragEnd} />
+        <CameraFrame
+          board={board}
+          selected={cameraSelected}
+          onSelect={onSelectCamera}
+          onDragEnd={onCameraDragEnd}
+          onResizeEnd={onCameraResizeEnd}
+        />
       )}
 
       {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
