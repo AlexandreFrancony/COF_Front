@@ -583,7 +583,7 @@ export default function CharacterSheet() {
           </Card>
         )}
 
-        <div className="grid lg:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           <div className="lg:col-span-2 flex flex-col gap-4">
             <Card
               title="Voies"
