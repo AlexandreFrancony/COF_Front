@@ -144,13 +144,16 @@ function StatBar({ label, current, max, kind = 'pv' }) {
   );
 }
 
-function HudCard({ entry, tone }) {
+function HudCard({ entry, tone, selected, onClick }) {
   // Ties the card back to its pawn on the map: the token's own color when it has one, else a
   // sensible default per side (still distinguishes players from enemies at a glance).
   const accentColor = entry.color || (tone === 'enemy' ? '#ef4444' : '#c65d3b');
   return (
     <div
-      className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md"
+      onClick={onClick}
+      className={`flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md ${
+        onClick ? 'pointer-events-auto cursor-pointer' : ''
+      } ${selected ? 'ring-2 ring-white' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div
@@ -179,23 +182,28 @@ function HudCard({ entry, tone }) {
 // The camera is a square window (in %, always camera_width tall too — see the schema comment
 // in board.js: the scene and the projector output share the same 16:9 ratio, so a window w%
 // wide is exactly w% tall, no BOARD_ASPECT_RATIO correction needed like board_zones' shapes).
-function CameraFrame({ board, selected, onSelect, onDragEnd }) {
+// disabled while a token is selected — it otherwise sits above the tokens layer (z-30 vs
+// z-10) and, once resized to cover a good chunk of the board, silently steals every click
+// meant for a pawn underneath it. Letting clicks pass through while a token is selected lets
+// the GM drag that pawn out from under the frame instead of having to shrink the frame first.
+function CameraFrame({ board, selected, onSelect, onDragEnd, disabled = false }) {
   const x = board.camera_x ?? 50;
   const y = board.camera_y ?? 50;
   const w = board.camera_width ?? 100;
-  const { ref, handlePointerDown } = usePositionDrag(true, x, y, onDragEnd);
+  const { ref, handlePointerDown } = usePositionDrag(!disabled, x, y, onDragEnd);
 
   return (
     <div
       ref={ref}
       onPointerDown={handlePointerDown}
       onClick={(e) => {
+        if (disabled) return;
         e.stopPropagation();
         onSelect();
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 cursor-move border-2 border-dashed ${
-        selected ? 'border-white' : 'border-white/60'
-      }`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-30 border-2 border-dashed ${
+        disabled ? 'pointer-events-none' : 'cursor-move'
+      } ${selected ? 'border-white' : 'border-white/60'}`}
       style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${w}%` }}
     >
       <span className="absolute -top-6 left-0 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-white whitespace-nowrap">
@@ -331,19 +339,42 @@ export default function BoardCanvas({
       </div>
 
       {showCameraFrame && (
-        <CameraFrame board={board} selected={cameraSelected} onSelect={onSelectCamera} onDragEnd={onCameraDragEnd} />
+        <CameraFrame
+          board={board}
+          selected={cameraSelected}
+          onSelect={onSelectCamera}
+          onDragEnd={onCameraDragEnd}
+          disabled={!!selectedToken}
+        />
       )}
 
       {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
-          silently clipping cards past the board's bottom edge when there are many characters. */}
+          silently clipping cards past the board's bottom edge when there are many characters.
+          z-40 (above the camera frame's z-30) so a card is always clickable to select its pawn,
+          even when the frame is resized to cover that corner of the board. */}
       {hudPlayers?.length > 0 && (
-        <div className="absolute top-2 left-2 bottom-2 z-20 flex flex-col flex-wrap content-start items-start gap-1.5 pointer-events-none">
-          {hudPlayers.map((entry) => <HudCard key={entry.id} entry={entry} />)}
+        <div className="absolute top-2 left-2 bottom-2 z-40 flex flex-col flex-wrap content-start items-start gap-1.5 pointer-events-none">
+          {hudPlayers.map((entry) => (
+            <HudCard
+              key={entry.id}
+              entry={entry}
+              selected={selectedToken?.id === entry.id}
+              onClick={isGm ? (e) => { e.stopPropagation(); onSelectToken(entry); } : undefined}
+            />
+          ))}
         </div>
       )}
       {hudEnemies?.length > 0 && (
-        <div className="absolute top-2 right-2 bottom-2 z-20 flex flex-col flex-wrap-reverse content-start items-end gap-1.5 pointer-events-none">
-          {hudEnemies.map((entry) => <HudCard key={entry.id} entry={entry} tone="enemy" />)}
+        <div className="absolute top-2 right-2 bottom-2 z-40 flex flex-col flex-wrap-reverse content-start items-end gap-1.5 pointer-events-none">
+          {hudEnemies.map((entry) => (
+            <HudCard
+              key={entry.id}
+              entry={entry}
+              tone="enemy"
+              selected={selectedToken?.id === entry.id}
+              onClick={isGm ? (e) => { e.stopPropagation(); onSelectToken(entry); } : undefined}
+            />
+          ))}
         </div>
       )}
     </div>
