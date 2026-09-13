@@ -9,6 +9,7 @@ import CharacterSheet from './pages/CharacterSheet';
 import Board from './pages/Board';
 import BoardProjector from './pages/BoardProjector';
 import History from './pages/History';
+import GlossaireVoies from './pages/GlossaireVoies';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -104,6 +105,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <History />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/glossaire"
+        element={
+          <ProtectedRoute>
+            <GlossaireVoies />
           </ProtectedRoute>
         }
       />

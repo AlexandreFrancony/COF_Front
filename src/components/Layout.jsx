@@ -12,6 +12,14 @@ export default function Layout({ children }) {
             COF — Site MJ
           </Link>
           <div className="flex items-center gap-3 text-sm">
+            <a
+              href="/glossaire"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--text-secondary)] hover:text-[var(--accent)]"
+            >
+              📖 Glossaire
+            </a>
             <span className="text-[var(--text-secondary)]">{user?.display_name}</span>
             <button onClick={logout} className="text-[var(--accent)] hover:underline">
               Déconnexion

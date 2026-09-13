@@ -8,6 +8,7 @@ import {
   levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme,
 } from '../utils/api';
+import CapaciteSummary from '../components/CapaciteSummary';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
 const CARAC_LABELS = {
@@ -29,18 +30,6 @@ const HUMAN_ORIGINS = [
   'Sauvage (chasser, pister)',
   'Nomade (orientation, résistance à la chaleur/au froid)',
 ];
-
-// Dés évolutifs (d4°) : d4 aux niveaux 1-5, puis +1 cran tous les 3 niveaux à partir de 6 (p.43).
-const DICE_PROGRESSION = ['d4', 'd6', 'd8', 'd10', 'd12'];
-function evolvingDieForLevel(level) {
-  if (level < 6) return DICE_PROGRESSION[0];
-  return DICE_PROGRESSION[Math.min(4, 1 + Math.floor((level - 6) / 3))];
-}
-function resolveEvolvingDice(text, level) {
-  if (!text) return text;
-  const die = evolvingDieForLevel(level);
-  return text.replace(/d4°/g, die);
-}
 
 function Card({ children, className = '' }) {
   return (
@@ -384,9 +373,7 @@ export default function CharacterSheet() {
                                 {c.name}
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
-                              <span className="text-[var(--text-secondary)]">
-                                {' '}— {resolveEvolvingDice(c.description, character.level)}
-                              </span>
+                              <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} />
                             </li>
                           ))}
                         </ul>
@@ -717,7 +704,11 @@ export default function CharacterSheet() {
                   {v.capacites[0]?.name}
                 </div>
                 <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-                  {v.capacites[0]?.description}
+                  {v.capacites[0]?.resume ? (
+                    <span className="font-medium text-[var(--accent)]">{v.capacites[0].resume}</span>
+                  ) : (
+                    v.capacites[0]?.description
+                  )}
                 </div>
               </button>
             ))}
