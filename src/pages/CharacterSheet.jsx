@@ -90,6 +90,7 @@ export default function CharacterSheet() {
   const [saving, setSaving] = useState(false);
   const [armures, setArmures] = useState([]);
   const [armes, setArmes] = useState([]);
+  const [expandedVoies, setExpandedVoies] = useState(new Set());
 
   useEffect(() => {
     Promise.all([getCharacter(id), getProfils(), getPeuples(), getArmures(), getArmes()])
@@ -258,8 +259,16 @@ export default function CharacterSheet() {
 
   // --- Finished sheet view ---
   if (character.profil_id && character.pv_max > 0) {
+    const allVoiesIds = character.voies?.map((v) => v.voie_id) || [];
+    const allExpanded = allVoiesIds.length > 0 && allVoiesIds.every((vid) => expandedVoies.has(vid));
+    const toggleVoieExpanded = (voieId) => setExpandedVoies((prev) => {
+      const next = new Set(prev);
+      next.has(voieId) ? next.delete(voieId) : next.add(voieId);
+      return next;
+    });
+
     return (
-      <div className="p-6 max-w-2xl mx-auto flex flex-col gap-4">
+      <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-[var(--accent)]">
@@ -320,64 +329,96 @@ export default function CharacterSheet() {
           ))}
         </Card>
 
-        <Card>
-          <h2 className="font-semibold mb-2">Caractéristiques</h2>
-          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 text-center text-sm">
-            {CARACS.map((c) => (
-              <div key={c}>
-                <div className="text-[var(--text-secondary)]">{c}</div>
-                <div className="font-bold">{character.caracteristiques[c] >= 0 ? '+' : ''}{character.caracteristiques[c]}</div>
+        <div className="grid lg:grid-cols-3 gap-4 items-start">
+          <div className="lg:col-span-2 flex flex-col gap-4">
+            <Card>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-semibold">Voies</h2>
+                {allVoiesIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedVoies(allExpanded ? new Set() : new Set(allVoiesIds))}
+                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)]"
+                  >
+                    {allExpanded ? 'Tout replier' : 'Tout déplier'}
+                  </button>
+                )}
               </div>
-            ))}
+              <div className="flex flex-col gap-2">
+                {character.voies?.map((v) => {
+                  const isOpen = expandedVoies.has(v.voie_id);
+                  const capCount = v.capacites?.length || 0;
+                  return (
+                    <div key={v.voie_id} className="rounded-lg border border-[var(--border)] overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleVoieExpanded(v.voie_id)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--bg-input)]"
+                      >
+                        <span className="font-medium text-sm">
+                          {v.name} — rang {v.rang}
+                          {v.rang_cap && v.rang >= v.rang_cap && (
+                            <span className="ml-1 text-xs text-[var(--text-secondary)] font-normal">(figée)</span>
+                          )}
+                        </span>
+                        <span className="text-xs text-[var(--text-secondary)] shrink-0">
+                          {capCount} capacité{capCount > 1 ? 's' : ''} {isOpen ? '▲' : '▼'}
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <ul className="text-sm flex flex-col gap-1.5 px-3 pb-3">
+                          {v.capacites?.map((c) => (
+                            <li key={c.id}>
+                              <span className="font-medium">
+                                {c.name}
+                                {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
+                              </span>
+                              <span className="text-[var(--text-secondary)]">
+                                {' '}— {resolveEvolvingDice(c.description, character.level)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <LevelUpPanel character={character} profilVoies={profilVoies} profils={profils} onRefresh={refreshCharacter} />
           </div>
-        </Card>
 
-        <ArmureSelector
-          character={character}
-          armures={armures}
-          isGm={isGm}
-          onArmuresChange={setArmures}
-          onRefresh={refreshCharacter}
-        />
-
-        <ArmeSelector
-          character={character}
-          armes={armes}
-          isGm={isGm}
-          onArmesChange={setArmes}
-          onRefresh={refreshCharacter}
-        />
-
-        <Card>
-          <h2 className="font-semibold mb-2">Voies</h2>
           <div className="flex flex-col gap-4">
-            {character.voies?.map((v) => (
-              <div key={v.voie_id}>
-                <div className="font-medium text-sm">
-                  {v.name} — rang {v.rang}
-                  {v.rang_cap && v.rang >= v.rang_cap && (
-                    <span className="ml-1 text-xs text-[var(--text-secondary)]">(figée)</span>
-                  )}
-                </div>
-                <ul className="text-sm flex flex-col gap-1.5 mt-1">
-                  {v.capacites?.map((c) => (
-                    <li key={c.id}>
-                      <span className="font-medium">
-                        {c.name}
-                        {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
-                      </span>
-                      <span className="text-[var(--text-secondary)]">
-                        {' '}— {resolveEvolvingDice(c.description, character.level)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+            <Card>
+              <h2 className="font-semibold mb-2">Caractéristiques</h2>
+              <div className="grid grid-cols-4 gap-2 text-center text-sm">
+                {CARACS.map((c) => (
+                  <div key={c}>
+                    <div className="text-[var(--text-secondary)]">{c}</div>
+                    <div className="font-bold">{character.caracteristiques[c] >= 0 ? '+' : ''}{character.caracteristiques[c]}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
 
-        <LevelUpPanel character={character} profilVoies={profilVoies} profils={profils} onRefresh={refreshCharacter} />
+            <ArmureSelector
+              character={character}
+              armures={armures}
+              isGm={isGm}
+              onArmuresChange={setArmures}
+              onRefresh={refreshCharacter}
+            />
+
+            <ArmeSelector
+              character={character}
+              armes={armes}
+              isGm={isGm}
+              onArmesChange={setArmes}
+              onRefresh={refreshCharacter}
+            />
+          </div>
+        </div>
         </>
         )}
       </div>
@@ -800,6 +841,8 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   const [customVoies, setCustomVoies] = useState([]);
   const [allProfilVoies, setAllProfilVoies] = useState([]);
   const [prestigeVoies, setPrestigeVoies] = useState([]);
+  const [hybridSearch, setHybridSearch] = useState('');
+  const [openHybridProfil, setOpenHybridProfil] = useState(null);
   const points = character.capacity_points_available;
 
   useEffect(() => {
@@ -882,6 +925,22 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
     ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id)
     : [];
 
+  // Grouped by profil (collapsed accordion) when browsing, or flattened across all groups when
+  // searching — with 13 profils x ~5 voies each, a flat list of every hybrid option at once is
+  // unusable.
+  const hybridByProfil = {};
+  hybridVoies.forEach((v) => { (hybridByProfil[v.profil_id] ??= []).push(v); });
+  const hybridProfilIds = Object.keys(hybridByProfil).map(Number).sort((a, b) =>
+    (profils.find((p) => p.id === a)?.name || '').localeCompare(profils.find((p) => p.id === b)?.name || '')
+  );
+  const hybridSearchLower = hybridSearch.trim().toLowerCase();
+  const hybridSearchResults = hybridSearchLower
+    ? hybridVoies.filter((v) =>
+        v.name.toLowerCase().includes(hybridSearchLower) ||
+        (profils.find((p) => p.id === v.profil_id)?.name || '').toLowerCase().includes(hybridSearchLower)
+      )
+    : null;
+
   // Voie de prestige (p.39) : une seule par carrière, ouverte à partir de niveau_prestige_requis.
   const hasPrestigeVoie = (character.voies || []).some((v) => v.type === 'prestige');
   const eligiblePrestigeVoies = hasPrestigeVoie
@@ -953,18 +1012,66 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
           <p className="text-sm mb-1">
             Profil hybride — voie hors profil principal (rang 1, 1 point) :
           </p>
-          <div className="flex flex-wrap gap-2">
-            {hybridVoies.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                disabled={busy}
-                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-              >
-                {v.name} ({profils.find((p) => p.id === v.profil_id)?.name})
-              </button>
-            ))}
-          </div>
+          <input
+            type="text"
+            placeholder="Rechercher une voie ou un profil..."
+            value={hybridSearch}
+            onChange={(e) => setHybridSearch(e.target.value)}
+            className="w-full mb-2 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+          />
+          {hybridSearchResults ? (
+            hybridSearchResults.length === 0 ? (
+              <p className="text-xs text-[var(--text-secondary)]">Aucun résultat.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {hybridSearchResults.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                    disabled={busy}
+                    className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+                  >
+                    {v.name} ({profils.find((p) => p.id === v.profil_id)?.name})
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col gap-1">
+              {hybridProfilIds.map((pid) => {
+                const items = hybridByProfil[pid];
+                const isOpen = openHybridProfil === pid;
+                return (
+                  <div key={pid} className="rounded-lg border border-[var(--border)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setOpenHybridProfil(isOpen ? null : pid)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-left hover:bg-[var(--bg-input)]"
+                    >
+                      <span>{profils.find((p) => p.id === pid)?.name}</span>
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        {items.length} voie{items.length > 1 ? 's' : ''} {isOpen ? '▲' : '▼'}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="flex flex-wrap gap-2 p-2 pt-0">
+                        {items.map((v) => (
+                          <button
+                            key={v.id}
+                            onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
+                            disabled={busy}
+                            className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
+                          >
+                            {v.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1722,6 +1829,16 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
   );
 }
 
+// Same health-tier coloring as the board HUD (green >=60%, amber 30-60%, red <30%, full red +
+// "K.O." at 0) so a GM scanning the sheet gets the same at-a-glance read as on the live board.
+function statBarColor(current, max) {
+  if (current <= 0) return 'bg-red-500';
+  const pct = max > 0 ? (current / max) * 100 : 0;
+  if (pct >= 60) return 'bg-emerald-500';
+  if (pct >= 30) return 'bg-amber-500';
+  return 'bg-red-400';
+}
+
 function StatAdjuster({ label, current, max, onChange }) {
   const [busy, setBusy] = useState(false);
 
@@ -1738,6 +1855,8 @@ function StatAdjuster({ label, current, max, onChange }) {
     }
   };
 
+  const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
+
   return (
     <div>
       <div className="text-xs text-[var(--text-secondary)]">{label}</div>
@@ -1749,7 +1868,9 @@ function StatAdjuster({ label, current, max, onChange }) {
         >
           −
         </button>
-        <span className="font-bold text-lg w-14">{current}/{max}</span>
+        <span className={`font-bold text-lg w-14 ${current <= 0 ? 'text-red-500' : ''}`}>
+          {current <= 0 ? 'K.O.' : `${current}/${max}`}
+        </span>
         <button
           onClick={() => adjust(1)}
           disabled={busy || current >= max}
@@ -1757,6 +1878,12 @@ function StatAdjuster({ label, current, max, onChange }) {
         >
           +
         </button>
+      </div>
+      <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
+          style={{ width: `${current <= 0 ? 100 : pct}%` }}
+        />
       </div>
     </div>
   );
