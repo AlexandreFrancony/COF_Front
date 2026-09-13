@@ -20,6 +20,14 @@ const CARAC_LABELS = {
 const CARAC_EMOJI = { AGI: '🤸', CON: '🫀', FOR: '💪', PER: '👁️', CHA: '✨', INT: '🧠', VOL: '🔥' };
 const STAT_EMOJI = { PV: '❤️', PM: '🔮', Chance: '🍀', DR: '💤', Défense: '🛡️', Initiative: '⚡' };
 
+// Three fixed value arrays (p.20) the player distributes freely across the 7 caractéristiques —
+// not tied to the profil's "priorities" in any way, those are just a suggestion shown alongside.
+const CARAC_PROFILES = {
+  polyvalent: { label: 'Polyvalent', values: [2, 2, 2, 1, 1, 0, -1] },
+  expert: { label: 'Expert', values: [3, 2, 1, 1, 0, 0, -1] },
+  specialiste: { label: 'Spécialiste', values: [4, 2, 1, 0, 0, -1, -1] },
+};
+
 // Voie de l'Humain — rang 1 "Diversité" (p.46) : origine géographique/sociale à choisir,
 // qui donne +3 à deux domaines narratifs liés (non modélisés ici) + 1 PC (calculé côté backend).
 const HUMAN_ORIGINS = [
@@ -184,6 +192,12 @@ export default function CharacterSheet() {
   const [profilId, setProfilId] = useState(null);
   const [peupleId, setPeupleId] = useState(null);
   const [caracteristiques, setCaracteristiques] = useState(null);
+  const [caracProfileKey, setCaracProfileKey] = useState(null);
+  // { AGI: chipIndex, ... } — chipIndex is the value's position in CARAC_PROFILES[key].values,
+  // tracked by index (not by value) so the profile's duplicate numbers (e.g. Polyvalent's two
+  // +2 and two +1) each still act as a single, distinct, draggable chip.
+  const [caracSlots, setCaracSlots] = useState({});
+  const [selectedChip, setSelectedChip] = useState(null);
   const [profilVoies, setProfilVoies] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
   const [demiElfeChoices, setDemiElfeChoices] = useState(null);
@@ -238,35 +252,54 @@ export default function CharacterSheet() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [character]);
 
-  // --- Step 2→3: initialize caracteristiques from the série rapide once a profil is chosen ---
+  // --- Step 2→3: caractéristiques are assigned freely (p.20) — pick one of the 3 value
+  // profiles, then drag each of its 7 numbers onto a caractéristique. Nothing pre-filled here;
+  // goToCaracteristiques only resets the picker so a previous attempt (Retour then Suivant
+  // again) doesn't carry over a stale profile/assignment from before.
   const goToCaracteristiques = () => {
-    const base = Object.fromEntries(CARACS.map((c) => [c, 0]));
-    profil.caracteristiques_prioritaires.forEach((c, i) => {
-      base[c] = [3, 2, 1][i] ?? 0;
-    });
-    setCaracteristiques(base);
+    setCaracProfileKey(null);
+    setCaracSlots({});
+    setSelectedChip(null);
+    setCaracteristiques(null);
     setStep(3);
   };
 
-  const remainingCaracs = caracteristiques
-    ? CARACS.filter((c) => !profil.caracteristiques_prioritaires.includes(c))
-    : [];
-
-  const assignBonus = (carac) => {
-    setCaracteristiques((prev) => {
-      const next = { ...prev };
-      // clear any previous +1 among remaining caracs
-      remainingCaracs.forEach((c) => { if (next[c] === 1) next[c] = 0; });
-      next[carac] = 1;
-      return next;
-    });
+  const selectCaracProfile = (key) => {
+    setCaracProfileKey(key);
+    setCaracSlots({});
+    setSelectedChip(null);
+    setCaracteristiques(Object.fromEntries(CARACS.map((c) => [c, 0])));
   };
 
-  const assignMalus = (carac) => {
-    setCaracteristiques((prev) => {
+  const caracProfileValues = caracProfileKey ? CARAC_PROFILES[caracProfileKey].values : [];
+  const usedChipIds = new Set(Object.values(caracSlots));
+  const caracPool = caracProfileValues
+    .map((value, chipId) => ({ chipId, value }))
+    .filter(({ chipId }) => !usedChipIds.has(chipId));
+  const allCaracsAssigned = caracProfileKey != null && CARACS.every((c) => caracSlots[c] !== undefined);
+
+  // Placing a chip already used elsewhere moves it (never duplicates); placing onto an
+  // already-filled caractéristique bumps its previous chip back to the pool.
+  const placeCaracChip = (carac, chipId) => {
+    setCaracSlots((prev) => {
+      const next = {};
+      for (const [c, id] of Object.entries(prev)) {
+        if (c !== carac && id !== chipId) next[c] = id;
+      }
+      next[carac] = chipId;
+      const values = CARAC_PROFILES[caracProfileKey].values;
+      setCaracteristiques(Object.fromEntries(CARACS.map((c) => [c, next[c] !== undefined ? values[next[c]] : 0])));
+      return next;
+    });
+    setSelectedChip(null);
+  };
+
+  const unplaceCaracChip = (carac) => {
+    setCaracSlots((prev) => {
       const next = { ...prev };
-      remainingCaracs.forEach((c) => { if (next[c] === -1) next[c] = 0; });
-      next[carac] = -1;
+      delete next[carac];
+      const values = CARAC_PROFILES[caracProfileKey].values;
+      setCaracteristiques(Object.fromEntries(CARACS.map((c) => [c, next[c] !== undefined ? values[next[c]] : 0])));
       return next;
     });
   };
@@ -699,51 +732,107 @@ export default function CharacterSheet() {
         </Card>
       )}
 
-      {step === 3 && caracteristiques && (
+      {step === 3 && (
         <Card className="flex flex-col gap-4">
           <h2 className="font-semibold">3. Caractéristiques</h2>
-          <p className="text-sm text-[var(--text-secondary)]">
-            Série rapide : {profil.caracteristiques_prioritaires.join(' +3, ')} +3/+2/+1 déjà assignés.
-            Choisissez le +1 et le -1 restants parmi les autres.
-          </p>
-          <div className="grid grid-cols-4 gap-2 text-center text-sm mb-2">
-            {CARACS.map((c) => (
-              <div key={c}>
-                <div className="text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</div>
-                <div className="font-bold">{caracteristiques[c] >= 0 ? '+' : ''}{caracteristiques[c]}</div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <p className="text-sm mb-1">+1 supplémentaire :</p>
-            <div className="flex flex-wrap gap-2">
-              {remainingCaracs.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => assignBonus(c)}
-                  className={`px-2 py-1 rounded border text-sm ${caracteristiques[c] === 1 ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
-                >
-                  {CARAC_LABELS[c]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-sm mb-1">-1 :</p>
-            <div className="flex flex-wrap gap-2">
-              {remainingCaracs.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => assignMalus(c)}
-                  className={`px-2 py-1 rounded border text-sm ${caracteristiques[c] === -1 ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
-                >
-                  {CARAC_LABELS[c]}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {peuple?.ajustements && (
+          {!caracProfileKey ? (
+            <>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Choisissez une série de valeurs à répartir librement entre les 7 caractéristiques
+                (suggestion pour ce profil : {profil.caracteristiques_prioritaires.join(', ')}).
+              </p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {Object.entries(CARAC_PROFILES).map(([key, { label, values }]) => (
+                  <button
+                    key={key}
+                    onClick={() => selectCaracProfile(key)}
+                    className="p-3 rounded-lg border border-[var(--border)] hover:border-[var(--accent)] text-left"
+                  >
+                    <div className="font-medium mb-1">{label}</div>
+                    <div className="text-sm text-[var(--text-secondary)]">
+                      {values.map((v) => (v >= 0 ? `+${v}` : v)).join(', ')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {CARAC_PROFILES[caracProfileKey].label} — glissez chaque valeur sur une caractéristique
+                  (ou cliquez une valeur puis la caractéristique visée).
+                </p>
+                <button
+                  onClick={() => selectCaracProfile(null)}
+                  className="shrink-0 text-xs px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  Changer de série
+                </button>
+              </div>
+
+              {/* Pool of not-yet-placed values — also a drop target, so dragging a placed chip
+                  back here unassigns it instead of only being able to overwrite another slot. */}
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const chipId = Number(e.dataTransfer.getData('text/plain'));
+                  const owner = Object.entries(caracSlots).find(([, id]) => id === chipId)?.[0];
+                  if (owner) unplaceCaracChip(owner);
+                }}
+                className="min-h-[3.5rem] flex flex-wrap items-center gap-2 p-2 rounded-lg border border-dashed border-[var(--border)]"
+              >
+                {caracPool.length === 0 && (
+                  <span className="text-xs text-[var(--text-secondary)]">Toutes les valeurs sont placées.</span>
+                )}
+                {caracPool.map(({ chipId, value }) => (
+                  <div
+                    key={chipId}
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData('text/plain', String(chipId))}
+                    onClick={() => setSelectedChip((prev) => (prev === chipId ? null : chipId))}
+                    className={`w-11 h-11 flex items-center justify-center rounded-lg border font-bold cursor-grab active:cursor-grabbing select-none ${
+                      selectedChip === chipId ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'
+                    }`}
+                  >
+                    {value >= 0 ? `+${value}` : value}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {CARACS.map((c) => {
+                  const chipId = caracSlots[c];
+                  const value = chipId !== undefined ? caracProfileValues[chipId] : null;
+                  return (
+                    <div key={c} className="flex flex-col items-center gap-1">
+                      <div className="text-xs text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</div>
+                      <div
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => placeCaracChip(c, Number(e.dataTransfer.getData('text/plain')))}
+                        onClick={() => {
+                          if (selectedChip !== null) placeCaracChip(c, selectedChip);
+                          else if (chipId !== undefined) unplaceCaracChip(c);
+                        }}
+                        draggable={chipId !== undefined}
+                        onDragStart={(e) => chipId !== undefined && e.dataTransfer.setData('text/plain', String(chipId))}
+                        className={`w-14 h-14 flex items-center justify-center rounded-lg border font-bold cursor-pointer ${
+                          value !== null
+                            ? 'border-[var(--accent)] bg-[var(--bg-input)] cursor-grab active:cursor-grabbing'
+                            : 'border-dashed border-[var(--border)] text-[var(--text-secondary)] text-xs'
+                        }`}
+                      >
+                        {value !== null ? (value >= 0 ? `+${value}` : value) : '—'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {allCaracsAssigned && peuple?.ajustements && (
             <PeupleAjustement peuple={peuple} caracteristiques={caracteristiques} onConfirm={applyPeupleAjustement} />
           )}
 
