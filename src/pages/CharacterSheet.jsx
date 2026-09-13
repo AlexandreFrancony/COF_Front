@@ -313,7 +313,7 @@ export default function CharacterSheet() {
             onChange={(v) => updateCharacter(id, { pv_current: v }).then(refreshCharacter)}
           />
           <StatAdjuster
-            label="PM" current={character.pm_current} max={character.pm_max}
+            label="PM" current={character.pm_current} max={character.pm_max} koLabel={false}
             onChange={(v) => updateCharacter(id, { pm_current: v }).then(refreshCharacter)}
           />
           {[
@@ -1842,9 +1842,13 @@ function statBarColor(current, max) {
   return 'bg-red-400';
 }
 
-function StatAdjuster({ label, current, max, onChange }) {
+// koLabel controls whether hitting 0 reads as "K.O." (down/unconscious) — true for PV, false
+// for PM: running out of mana just means no more spells, it doesn't knock anyone out. Both
+// still get the same empty-red bar, only the wording differs.
+function StatAdjuster({ label, current, max, onChange, koLabel = true }) {
   const [busy, setBusy] = useState(false);
-  const isDown = max > 0 && current <= 0;
+  const isEmpty = max > 0 && current <= 0;
+  const isDown = isEmpty && koLabel;
 
   const adjust = async (delta) => {
     const next = Math.max(0, Math.min(max, current + delta));
@@ -1886,7 +1890,7 @@ function StatAdjuster({ label, current, max, onChange }) {
       <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
-          style={{ width: `${isDown ? 100 : pct}%` }}
+          style={{ width: `${isEmpty ? 100 : pct}%` }}
         />
       </div>
     </div>
