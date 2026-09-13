@@ -31,6 +31,30 @@ const HUMAN_ORIGINS = [
   'Nomade (orientation, résistance à la chaleur/au froid)',
 ];
 
+// Augustin Moëdec's homebrew schizophrenia — hardcoded to these exact voie_ids (Voie des
+// artefacts=76, Voie du métal=78 for "facette calme" · Voie de la magie destructrice=82,
+// Voie de la magie élémentaire=83 for "facette mage fou"), not a general multi-personality
+// system. Gated on character.custom_data.threshold_percent being set (only true for him),
+// so this is a no-op for every other character.
+const FACETTE_VOIE_GROUPS = { calme: [76, 78], mage: [82, 83] };
+
+// Facette is driven by the character's OWN current/max PM ratio (not the artefact's stored
+// reserve) — above the threshold his magic overflows and he loses himself to it ("facette
+// mage fou"); the artefact (Voie de transition, rang 1) exists precisely so he can bleed PM
+// out of his own body into external storage to stay under the threshold on purpose.
+function getFacette(character) {
+  const threshold = character.custom_data?.threshold_percent;
+  if (threshold == null || !character.pm_max) return null;
+  const percent = (character.pm_current / character.pm_max) * 100;
+  const active = percent >= threshold ? 'mage' : 'calme';
+  return {
+    threshold,
+    percent,
+    active,
+    inactiveVoieIds: FACETTE_VOIE_GROUPS[active === 'mage' ? 'calme' : 'mage'],
+  };
+}
+
 function Card({ children, className = '' }) {
   return (
     <div className={`p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] ${className}`}>
@@ -260,6 +284,22 @@ export default function CharacterSheet() {
       return next;
     });
 
+    const facette = getFacette(character);
+    // Reserve caps at PM max + VOL (rang 1 of the Voie de transition) — VOL isn't stored as its
+    // own column, only inside caracteristiques.
+    const artefactMax = (character.pm_max || 0) + (character.caracteristiques?.VOL || 0);
+    const artefactCurrent = character.custom_data?.artefact_reserve_current || 0;
+    // Moves mana between Augustin's own PM pool and the artefact's external reserve — delta>0
+    // stores (PM drops, reserve rises), delta<0 withdraws (PM rises, reserve drops). Each side
+    // is clamped independently to its own max/min, matching how a player would just eyeball it
+    // at the table rather than the app enforcing an exact 1:1 INT-test-gated transfer.
+    const handleArtefactTransfer = (delta) => {
+      const nextReserve = Math.max(0, Math.min(artefactMax, artefactCurrent + delta));
+      const actualDelta = nextReserve - artefactCurrent;
+      const nextPm = Math.max(0, Math.min(character.pm_max, character.pm_current - actualDelta));
+      updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: nextReserve } }).then(refreshCharacter);
+    };
+
     return (
       <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
@@ -329,6 +369,37 @@ export default function CharacterSheet() {
           ))}
         </Card>
 
+        {facette && (
+          <Card className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">Facette actuelle ({Math.round(facette.percent)}% PM, seuil {facette.threshold}%)</span>
+              <div className="font-semibold">
+                {facette.active === 'mage' ? '🌀 Mage fou' : '😌 Calme'}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)]">🏺 Réserve de l'artéfact</span>
+              <button
+                onClick={() => handleArtefactTransfer(-1)}
+                disabled={artefactCurrent <= 0}
+                title="Récupérer 1 PM depuis l'artéfact"
+                className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40"
+              >
+                ←
+              </button>
+              <span className="font-semibold text-sm w-14 text-center">{artefactCurrent}/{artefactMax}</span>
+              <button
+                onClick={() => handleArtefactTransfer(1)}
+                disabled={artefactCurrent >= artefactMax || character.pm_current <= 0}
+                title="Stocker 1 PM dans l'artéfact"
+                className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40"
+              >
+                →
+              </button>
+            </div>
+          </Card>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-4 items-start">
           <div className="lg:col-span-2 flex flex-col gap-4">
             <Card>
@@ -348,8 +419,12 @@ export default function CharacterSheet() {
                 {character.voies?.map((v) => {
                   const isOpen = expandedVoies.has(v.voie_id);
                   const capCount = v.capacites?.length || 0;
+                  const isInactiveFacette = facette?.inactiveVoieIds.includes(v.voie_id);
                   return (
-                    <div key={v.voie_id} className="rounded-lg border border-[var(--border)] overflow-hidden">
+                    <div
+                      key={v.voie_id}
+                      className={`rounded-lg border border-[var(--border)] overflow-hidden ${isInactiveFacette ? 'opacity-50' : ''}`}
+                    >
                       <button
                         type="button"
                         onClick={() => toggleVoieExpanded(v.voie_id)}
@@ -359,6 +434,9 @@ export default function CharacterSheet() {
                           {v.name} — rang {v.rang}
                           {v.rang_cap && v.rang >= v.rang_cap && (
                             <span className="ml-1 text-xs text-[var(--text-secondary)] font-normal">(figée)</span>
+                          )}
+                          {isInactiveFacette && (
+                            <span className="ml-1 text-xs text-[var(--text-secondary)] font-normal">🔒 facette inactive</span>
                           )}
                         </span>
                         <span className="text-xs text-[var(--text-secondary)] shrink-0">
@@ -1136,6 +1214,9 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
     dr_bonus_orphan: character.dr_bonus_orphan,
     pm_bonus_orphan: character.pm_bonus_orphan,
     origine_humaine: character.origine_humaine || '',
+    // Augustin Moëdec's facette threshold (% of PM current/max) — see getFacette() and
+    // FACETTE_VOIE_GROUPS above. Empty for every other character; blank here disables it.
+    facette_threshold_percent: character.custom_data?.threshold_percent ?? '',
   });
 
   useEffect(() => {
@@ -1148,7 +1229,11 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateCharacter(character.id, form);
+      const { facette_threshold_percent, ...rest } = form;
+      await updateCharacter(character.id, {
+        ...rest,
+        custom_data: { threshold_percent: facette_threshold_percent === '' ? null : Number(facette_threshold_percent) },
+      });
       await onRefresh();
       toast.success('Fiche mise à jour');
     } catch (e) {
@@ -1263,6 +1348,19 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
             />
           </label>
         )}
+
+        <label className="text-sm flex flex-col gap-1">
+          Seuil de facette (% PM courant/max — vide = mécanisme désactivé)
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={form.facette_threshold_percent}
+            onChange={(e) => setField('facette_threshold_percent', e.target.value)}
+            placeholder="ex: 60"
+            className="w-24 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          />
+        </label>
 
         <div>
           <p className="text-sm mb-1">Grand livre / ressources brutes</p>
