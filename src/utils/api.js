@@ -156,6 +156,10 @@ export const updateBoardGrid = (campaignId, data) =>
 // data: { camera_x, camera_y } on drag-end, or { camera_width_delta } on a zoom +/- click.
 export const updateBoardCamera = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
+// Atomic server-side delta, same reasoning as camera_width_delta (avoids dropping a rapid
+// double-click's second delta while the first response is still in flight).
+export const updateBoardTokenSize = (campaignId, delta) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ token_size_delta: delta }) });
 export const createBoardToken = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
 export const updateBoardToken = (tokenId, data) =>
@@ -176,6 +180,27 @@ export async function uploadBoardImage(campaignId, file) {
   formData.append('image', file);
 
   const response = await fetch(`${API_URL}/campaigns/${campaignId}/board/upload`, {
+    method: 'POST',
+    headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Échec de l\'envoi' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Two-step, like uploadBoardImage: this only uploads the file and returns its URL — the caller
+// still does updateCharacter(id, { avatar_url: url }) to actually apply it (and clear any emoji).
+export async function uploadCharacterAvatar(characterId, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`${API_URL}/characters/${characterId}/avatar`, {
     method: 'POST',
     headers: { ...(token && { Authorization: `Bearer ${token}` }) },
     body: formData,

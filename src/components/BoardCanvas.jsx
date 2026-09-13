@@ -50,8 +50,20 @@ function usePositionDrag(enabled, x, y, onDragEnd) {
   return { ref, handlePointerDown };
 }
 
-function Token({ token, isGm, selected, onSelect, onDragEnd }) {
+// A pawn's own image_url (set directly on the token, e.g. a free-floating PNJ) always wins;
+// falling back to its linked character's persistent avatar_url (a real photo) when the token
+// itself has none, and finally to that character's avatar_emoji as a lightweight substitute —
+// rendered as text since there's no image to use as a CSS background-image. Plain color/no
+// avatar at all is the last resort (unchanged from before avatars existed).
+function resolveAvatar(entry) {
+  const imageUrl = entry.image_url || entry.character_avatar_url || null;
+  const emoji = !imageUrl ? entry.character_avatar_emoji || null : null;
+  return { imageUrl, emoji };
+}
+
+function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
   const { ref, handlePointerDown } = usePositionDrag(isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y));
+  const { imageUrl, emoji } = resolveAvatar(token);
 
   return (
     <div
@@ -65,14 +77,17 @@ function Token({ token, isGm, selected, onSelect, onDragEnd }) {
       style={{ left: `${token.x}%`, top: `${token.y}%` }}
     >
       <div
-        className={`w-10 h-10 rounded-full border-2 shadow-lg bg-cover bg-center ${
+        className={`rounded-full border-2 shadow-lg bg-cover bg-center shrink-0 flex items-center justify-center ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
         } ${isGm && !token.visible_to_players ? 'opacity-40' : ''}`}
         style={{
+          width: size, height: size,
           backgroundColor: token.color,
-          backgroundImage: token.image_url ? `url(${token.image_url})` : undefined,
+          backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
         }}
-      />
+      >
+        {emoji && <span style={{ fontSize: size * 0.55, lineHeight: 1 }}>{emoji}</span>}
+      </div>
       <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
         {token.label}
       </span>
@@ -148,6 +163,7 @@ function HudCard({ entry, tone, selected, onClick }) {
   // Ties the card back to its pawn on the map: the token's own color when it has one, else a
   // sensible default per side (still distinguishes players from enemies at a glance).
   const accentColor = entry.color || (tone === 'enemy' ? '#ef4444' : '#c65d3b');
+  const { imageUrl, emoji } = resolveAvatar(entry);
   return (
     <div
       onClick={onClick}
@@ -157,12 +173,14 @@ function HudCard({ entry, tone, selected, onClick }) {
       style={{ borderLeftColor: accentColor }}
     >
       <div
-        className="w-8 h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center"
+        className="w-8 h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center flex items-center justify-center"
         style={{
           backgroundColor: entry.color || '#c65d3b',
-          backgroundImage: entry.image_url ? `url(${entry.image_url})` : undefined,
+          backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
         }}
-      />
+      >
+        {emoji && <span style={{ fontSize: 16, lineHeight: 1 }}>{emoji}</span>}
+      </div>
       <div className="flex flex-col gap-0.5 min-w-0">
         <span className="text-[11px] font-semibold leading-none truncate max-w-[9rem]" title={entry.character_name || entry.label}>
           {entry.character_name || entry.label}
@@ -396,6 +414,7 @@ export default function BoardCanvas({
             selected={selectedToken?.id === token.id}
             onSelect={onSelectToken}
             onDragEnd={onTokenDragEnd}
+            size={board.token_size || 40}
           />
         ))}
       </div>

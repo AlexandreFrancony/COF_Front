@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -6,7 +6,7 @@ import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
-  getArmes, createArme, deleteArme,
+  getArmes, createArme, deleteArme, uploadCharacterAvatar,
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
 
@@ -59,6 +59,74 @@ function Card({ children, className = '' }) {
   return (
     <div className={`p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] ${className}`}>
       {children}
+    </div>
+  );
+}
+
+// Shown wherever the character appears as a pawn (board token, HUD card) — a real photo takes
+// priority over the emoji fallback, see resolveAvatar() in BoardCanvas.jsx. Editable by anyone
+// who can load this sheet (owner or GM, same as armor/weapon selection below — cosmetic, not
+// gated behind Mode édition), the backend enforces the same access check either way.
+function CharacterAvatar({ character, onRefresh }) {
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [emoji, setEmoji] = useState(character.avatar_emoji || '');
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { url } = await uploadCharacterAvatar(character.id, file);
+      await updateCharacter(character.id, { avatar_url: url });
+      setEmoji('');
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleEmojiBlur = async () => {
+    const trimmed = emoji.trim();
+    if (trimmed === (character.avatar_emoji || '')) return;
+    try {
+      await updateCharacter(character.id, { avatar_emoji: trimmed || null });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1 shrink-0">
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        title="Changer la photo de profil"
+        className="w-16 h-16 rounded-full border-2 border-[var(--border)] bg-[var(--bg-input)] bg-cover bg-center flex items-center justify-center overflow-hidden hover:border-[var(--accent)] disabled:opacity-50"
+        style={{ backgroundImage: character.avatar_url ? `url(${character.avatar_url})` : undefined }}
+      >
+        {!character.avatar_url && (
+          character.avatar_emoji
+            ? <span className="text-2xl">{character.avatar_emoji}</span>
+            : <span className="text-lg">📷</span>
+        )}
+      </button>
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      <input
+        type="text"
+        value={emoji}
+        onChange={(e) => setEmoji(e.target.value)}
+        onBlur={handleEmojiBlur}
+        placeholder="ou emoji"
+        maxLength={8}
+        title="Emoji utilisé si aucune photo n'est définie"
+        className="w-16 px-1 py-0.5 text-xs text-center rounded border border-[var(--border)] bg-[var(--bg-input)]"
+      />
     </div>
   );
 }
@@ -354,22 +422,25 @@ export default function CharacterSheet() {
     return (
       <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            {campaign && (
-              <Link to={`/campaigns/${campaign.id}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
-                ← {campaign.name}
-              </Link>
-            )}
-            <h1 className="text-2xl font-bold text-[var(--accent)]">
-              {character.name}
-              {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
-            </h1>
-            <p className="text-[var(--text-secondary)]">
-              Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
-            </p>
-            {character.origine_humaine && (
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">Origine : {character.origine_humaine}</p>
-            )}
+          <div className="flex items-start gap-3">
+            <CharacterAvatar character={character} onRefresh={refreshCharacter} />
+            <div>
+              {campaign && (
+                <Link to={`/campaigns/${campaign.id}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
+                  ← {campaign.name}
+                </Link>
+              )}
+              <h1 className="text-2xl font-bold text-[var(--accent)]">
+                {character.name}
+                {character.is_npc && <span className="ml-2 text-sm text-[var(--text-secondary)] font-normal">(PNJ)</span>}
+              </h1>
+              <p className="text-[var(--text-secondary)]">
+                Niveau {character.level} — {profils.find((p) => p.id === character.profil_id)?.name} · {peuples.find((p) => p.id === character.peuple_id)?.name}
+              </p>
+              {character.origine_humaine && (
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Origine : {character.origine_humaine}</p>
+              )}
+            </div>
           </div>
           {isGm && (
             <button

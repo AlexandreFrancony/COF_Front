@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import BoardCanvas from '../components/BoardCanvas';
 import {
-  getBoard, updateBoardBackground, updateBoardGrid, uploadBoardImage, createBoardToken,
+  getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
   getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera,
@@ -60,6 +60,14 @@ export default function Board() {
   const handleToggleGrid = async () => {
     try {
       setBoard(await updateBoardGrid(campaignId, { grid_visible: !board.grid_visible }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleTokenSize = async (delta) => {
+    try {
+      setBoard(await updateBoardTokenSize(campaignId, delta));
     } catch (error) {
       toast.error(error.message);
     }
@@ -301,6 +309,22 @@ export default function Board() {
           >
             {board.grid_visible ? 'Masquer la grille' : 'Afficher la grille'}
           </button>
+
+          <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
+            <span className="pl-1 text-[var(--text-secondary)]">Taille des pions</span>
+            <button
+              onClick={() => handleTokenSize(-8)}
+              className="w-7 h-7 rounded hover:bg-[var(--bg-input)]"
+            >
+              −
+            </button>
+            <button
+              onClick={() => handleTokenSize(8)}
+              className="w-7 h-7 rounded hover:bg-[var(--bg-input)]"
+            >
+              +
+            </button>
+          </div>
 
           <form onSubmit={handleAddToken} className="flex gap-2">
             <input
