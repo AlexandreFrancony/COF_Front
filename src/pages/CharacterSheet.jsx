@@ -1236,23 +1236,36 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, on
   );
 }
 
-// Equipped armor gives a flat DEF bonus (already folded into character.defense by the backend
-// recompute) — anyone with access to the character (owner or GM) can (un)equip; only the GM
-// curates the shared library itself (add/remove entries), since exact COF2 armor stats live in
-// the rulebook, not something the app hardcodes.
+function armureOptionLabel(a) {
+  const bits = [`${a.defense_bonus >= 0 ? '+' : ''}${a.defense_bonus} DEF`];
+  if (a.agi_max != null) bits.push(`AGI max +${a.agi_max}`);
+  if (a.prix) bits.push(a.prix);
+  return `${a.name} (${bits.join(', ')})`;
+}
+
+// Armor and shield stack (p.188) — a character can equip one of each, both folded into
+// character.defense by the backend recompute. Anyone with access to the character (owner or
+// GM) can (un)equip either slot; only the GM curates the shared library itself (add/remove
+// entries) — the list is seeded from the rulebook's own armor table (p.188), not guessed.
 function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }) {
   const [showManage, setShowManage] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState('armure');
   const [newBonus, setNewBonus] = useState(1);
+  const [newAgiMax, setNewAgiMax] = useState('');
+  const [newPrix, setNewPrix] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const current = armures.find((a) => a.id === character.armure_id);
+  const armorOptions = armures.filter((a) => a.type !== 'bouclier');
+  const shieldOptions = armures.filter((a) => a.type === 'bouclier');
+  const currentArmure = armures.find((a) => a.id === character.armure_id);
+  const currentBouclier = armures.find((a) => a.id === character.bouclier_id);
+  const totalBonus = (currentArmure?.defense_bonus || 0) + (currentBouclier?.defense_bonus || 0);
 
-  const handleSelect = async (e) => {
-    const value = e.target.value;
+  const handleSelect = async (field, value) => {
     setBusy(true);
     try {
-      await updateCharacter(character.id, { armure_id: value ? Number(value) : null });
+      await updateCharacter(character.id, { [field]: value ? Number(value) : null });
       await onRefresh();
     } catch (err) {
       toast.error(err.message);
@@ -1265,10 +1278,18 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
     if (!newName.trim()) return;
     setBusy(true);
     try {
-      const created = await createArmure({ name: newName.trim(), defense_bonus: Number(newBonus) || 0 });
-      onArmuresChange([...armures, created].sort((a, b) => a.name.localeCompare(b.name)));
+      const created = await createArmure({
+        name: newName.trim(),
+        type: newType,
+        defense_bonus: Number(newBonus) || 0,
+        agi_max: newAgiMax !== '' ? Number(newAgiMax) : null,
+        prix: newPrix.trim() || null,
+      });
+      onArmuresChange([...armures, created]);
       setNewName('');
       setNewBonus(1);
+      setNewAgiMax('');
+      setNewPrix('');
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -1281,7 +1302,7 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
     try {
       await deleteArmure(armureId);
       onArmuresChange(armures.filter((a) => a.id !== armureId));
-      if (character.armure_id === armureId) await onRefresh();
+      if (character.armure_id === armureId || character.bouclier_id === armureId) await onRefresh();
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -1291,35 +1312,53 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
 
   return (
     <Card>
-      <h2 className="font-semibold mb-2">Armure</h2>
-      <div className="flex items-center gap-2">
-        <select
-          value={character.armure_id || ''}
-          onChange={handleSelect}
-          disabled={busy}
-          className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
-        >
-          <option value="">Aucune</option>
-          {armures.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} ({a.defense_bonus >= 0 ? '+' : ''}{a.defense_bonus} DEF)
-            </option>
-          ))}
-        </select>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="font-semibold">Armure &amp; bouclier</h2>
         {isGm && (
           <button
             type="button"
             onClick={() => setShowManage((v) => !v)}
-            className="px-2 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
+            className="px-2 py-1 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] whitespace-nowrap"
           >
             Gérer
           </button>
         )}
       </div>
 
-      {current && (
-        <p className="text-xs text-[var(--text-secondary)] mt-1">
-          Bonus actuel : {current.defense_bonus >= 0 ? '+' : ''}{current.defense_bonus} DEF (déjà inclus dans la Défense ci-dessus)
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm flex flex-col gap-1">
+          Armure
+          <select
+            value={character.armure_id || ''}
+            onChange={(e) => handleSelect('armure_id', e.target.value)}
+            disabled={busy}
+            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          >
+            <option value="">Aucune</option>
+            {armorOptions.map((a) => (
+              <option key={a.id} value={a.id}>{armureOptionLabel(a)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm flex flex-col gap-1">
+          Bouclier
+          <select
+            value={character.bouclier_id || ''}
+            onChange={(e) => handleSelect('bouclier_id', e.target.value)}
+            disabled={busy}
+            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          >
+            <option value="">Aucun</option>
+            {shieldOptions.map((a) => (
+              <option key={a.id} value={a.id}>{armureOptionLabel(a)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {(currentArmure || currentBouclier) && (
+        <p className="text-xs text-[var(--text-secondary)] mt-2">
+          Bonus total : {totalBonus >= 0 ? '+' : ''}{totalBonus} DEF (déjà inclus dans la Défense ci-dessus)
         </p>
       )}
 
@@ -1331,13 +1370,36 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
               placeholder="Nom (ex: Armure de cuir)"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="flex-1 min-w-[160px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+              className="flex-1 min-w-[140px] px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
             />
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            >
+              <option value="armure">Armure</option>
+              <option value="bouclier">Bouclier</option>
+            </select>
             <input
               type="number"
               value={newBonus}
               onChange={(e) => setNewBonus(e.target.value)}
+              title="Bonus DEF"
+              className="w-16 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm text-center"
+            />
+            <input
+              type="number"
+              placeholder="AGI max"
+              value={newAgiMax}
+              onChange={(e) => setNewAgiMax(e.target.value)}
               className="w-20 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm text-center"
+            />
+            <input
+              type="text"
+              placeholder="Prix (ex: 15 pa)"
+              value={newPrix}
+              onChange={(e) => setNewPrix(e.target.value)}
+              className="w-24 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
             />
             <button
               type="button"
@@ -1356,7 +1418,7 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
                   key={a.id}
                   className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] text-xs"
                 >
-                  {a.name} ({a.defense_bonus >= 0 ? '+' : ''}{a.defense_bonus})
+                  {a.type === 'bouclier' ? '🛡️' : '🧥'} {armureOptionLabel(a)}
                   <button
                     type="button"
                     onClick={() => handleDelete(a.id)}
