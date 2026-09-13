@@ -140,6 +140,10 @@ export default function GlossaireVoies() {
     (profils.find((p) => p.id === a)?.name || '').localeCompare(profils.find((p) => p.id === b)?.name || '')
   );
 
+  const origines = [...new Set(customVoies.map((v) => v.origine_pj || 'Sans personnage'))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-4">
       <div>
@@ -206,13 +210,15 @@ export default function GlossaireVoies() {
           <GroupSection title="Voie du mage" voies={mageVoies} defaultOpen={false} highlightedId={highlightedId} />
 
           <h2 className="font-semibold mt-2">{TYPE_LABELS.custom}</h2>
-          <GroupSection
-            title="Toutes"
-            voies={customVoies}
-            defaultOpen={false}
-            highlightedId={highlightedId}
-            subtitleFor={(v) => v.origine_pj}
-          />
+          {origines.map((origine) => (
+            <GroupSection
+              key={origine}
+              title={origine}
+              voies={customVoies.filter((v) => (v.origine_pj || 'Sans personnage') === origine)}
+              defaultOpen={false}
+              highlightedId={highlightedId}
+            />
+          ))}
 
           <h2 className="font-semibold mt-2">{TYPE_LABELS.prestige}</h2>
           <GroupSection title="Toutes" voies={prestigeVoies} defaultOpen={false} highlightedId={highlightedId} />
