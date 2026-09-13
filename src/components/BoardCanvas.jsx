@@ -119,23 +119,22 @@ function StatBar({ label, current, max, kind = 'pv' }) {
       </div>
     );
   }
-  // Empty (<=0) is the single most urgent thing to spot at a glance during a fight — an empty
-  // bar alone reads the same as "no data", so it gets its own unmistakable state. But only PV
-  // reads as "K.O." (down/unconscious) — out of mana doesn't knock anyone out, so PM at 0 just
-  // shows "0/max" on the same full-red bar.
-  const isEmpty = current <= 0;
-  const isDown = isEmpty && kind === 'pv';
+  // 0 PV is the single most urgent thing to spot at a glance during a fight, so it gets its
+  // own unmistakable full-red "K.O." state. 0 PM doesn't get that treatment at all — running
+  // out of mana isn't being down, so it just reads as a normal empty bar (0% width, no alarm
+  // color/ring), same as any other resource at its floor.
+  const isDown = current <= 0 && kind === 'pv';
   const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
   let barColor;
-  if (isEmpty) barColor = 'bg-red-600';
+  if (isDown) barColor = 'bg-red-600';
   else if (kind === 'pm') barColor = 'bg-indigo-400';
   else barColor = pct >= 60 ? 'bg-emerald-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
-    <div className={`relative w-28 h-4 rounded bg-black/40 overflow-hidden ${isEmpty ? 'ring-1 ring-red-500' : ''}`}>
+    <div className={`relative w-28 h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
       <div
         className={`absolute inset-y-0 left-0 transition-[width,background-color] duration-300 ease-out ${barColor}`}
-        style={{ width: isEmpty ? '100%' : `${pct}%` }}
+        style={{ width: isDown ? '100%' : `${pct}%` }}
       />
       <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[10px] font-semibold text-white drop-shadow">
         <span>{label}</span>

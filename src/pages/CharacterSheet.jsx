@@ -1890,7 +1890,7 @@ function StatAdjuster({ label, current, max, onChange, koLabel = true }) {
       <div className="mt-1.5 h-1.5 rounded-full bg-[var(--bg-input)] overflow-hidden">
         <div
           className={`h-full rounded-full transition-[width] duration-300 ${statBarColor(current, max)}`}
-          style={{ width: `${isEmpty ? 100 : pct}%` }}
+          style={{ width: `${isDown ? 100 : pct}%` }}
         />
       </div>
     </div>
