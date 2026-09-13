@@ -305,7 +305,10 @@ export default function BoardCanvas({
   return (
     <div onClick={onBackgroundClick} className={`overflow-hidden ${className}`} style={style}>
       <div
-        className={isVideo ? '' : 'bg-cover bg-center'}
+        // contain (not cover): a background must always show in full at its native aspect —
+        // cover would zoom-crop a portrait source (a letter, a vertical handout) down to a
+        // thin vertical strip, losing most of its content, just to fill the fixed 16:9 box.
+        className={isVideo ? '' : 'bg-contain bg-center bg-no-repeat'}
         style={{
           ...sceneStyle,
           backgroundImage: !isVideo && board.background_url ? `url(${board.background_url})` : undefined,
