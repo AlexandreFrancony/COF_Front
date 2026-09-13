@@ -70,6 +70,9 @@ export default function CharacterSheet() {
   const [replaceWithMage, setReplaceWithMage] = useState(false);
   const [selectedVoieIds, setSelectedVoieIds] = useState([]);
   const [mageBonusVoieId, setMageBonusVoieId] = useState(null);
+  const [hybridCreation, setHybridCreation] = useState(false);
+  const [allProfilVoies, setAllProfilVoies] = useState([]);
+  const [hybridPickId, setHybridPickId] = useState('');
   const [equipement, setEquipement] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -171,6 +174,13 @@ export default function CharacterSheet() {
       if (profil.famille_code === 'mages') {
         const mageVoies = await getVoies({ type: 'mage' });
         if (mageVoies.length > 0) setVoieDuMage(mageVoies[0]);
+      }
+
+      // Only the GM can build a hybrid from level 1 (a deliberate exception to the normal
+      // creation rules — a player's own creation always follows RAW: 2 voies from their profil).
+      if (isGm) {
+        const all = await getVoies({ type: 'profil' });
+        setAllProfilVoies(all);
       }
 
       setStep(4);
@@ -443,8 +453,89 @@ export default function CharacterSheet() {
         <Card className="flex flex-col gap-3">
           <h2 className="font-semibold">4. Voies</h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            Choisissez 2 des 5 voies de {profil.name}. Voie de peuple automatique : {peupleVoie?.name || '—'}.
+            Choisissez 2 des 5 voies de {profil.name}{hybridCreation ? ', ou une voie hors profil ci-dessous' : ''}.
+            {' '}Voie de peuple automatique : {peupleVoie?.name || '—'}.
           </p>
+
+          {isGm && (
+            <div className="border-b border-[var(--border)] pb-3 mb-1">
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hybridCreation}
+                  onChange={(e) => setHybridCreation(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Personnage hybride dès la création</strong> — exception aux règles normales
+                  (le perso est déjà formé à un autre art au niveau 1, ex. un guerrier-mage). Permet de
+                  piocher une des 2 voies de départ dans un autre profil.
+                </span>
+              </label>
+
+              {hybridCreation && (
+                <>
+                  <div className="mt-2 flex gap-2">
+                    <select
+                      value={hybridPickId}
+                      onChange={(e) => setHybridPickId(e.target.value)}
+                      className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+                    >
+                      <option value="">— choisir une voie hors profil —</option>
+                      {profils.filter((p) => p.id !== profilId).map((op) => {
+                        const voies = allProfilVoies.filter((v) => v.profil_id === op.id);
+                        if (voies.length === 0) return null;
+                        return (
+                          <optgroup key={op.id} label={op.name}>
+                            {voies.map((v) => (
+                              <option key={v.id} value={v.id} disabled={selectedVoieIds.includes(v.id)}>
+                                {v.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!hybridPickId) return;
+                        toggleVoie(Number(hybridPickId));
+                        setHybridPickId('');
+                      }}
+                      disabled={!hybridPickId || selectedVoieIds.length >= 2}
+                      className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-50"
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+
+                  {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).map((id) => {
+                        const v = allProfilVoies.find((av) => av.id === id);
+                        return (
+                          <span
+                            key={id}
+                            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--accent)] bg-[var(--bg-input)] text-xs"
+                          >
+                            {v?.name} ({profils.find((p) => p.id === v?.profil_id)?.name})
+                            <button
+                              type="button"
+                              onClick={() => toggleVoie(id)}
+                              className="text-[var(--text-secondary)] hover:text-red-500"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {demiElfeChoices && (
             <div className="border-b border-[var(--border)] pb-3 mb-1">
@@ -520,7 +611,7 @@ export default function CharacterSheet() {
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedVoieIds.map((vid) => {
-                  const v = profilVoies.find((pv) => pv.id === vid);
+                  const v = profilVoies.find((pv) => pv.id === vid) || allProfilVoies.find((pv) => pv.id === vid);
                   return (
                     <button
                       key={vid}
