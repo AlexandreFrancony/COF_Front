@@ -501,9 +501,20 @@ export default function Board() {
                 </button>
               </>
             ) : (
-              <p className="text-sm text-[var(--text-secondary)]">
-                Sélectionne un pion, une zone ou le cadre projeté (son étiquette) pour le modifier.
-              </p>
+              <>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Sélectionne un pion, une zone ou le cadre projeté (son étiquette) pour le modifier.
+                </p>
+                {/* Fallback entry point: at camera_width=100 the frame's corner sits at (0,0)
+                    and its badge (shifted further up to sit above that corner) gets clipped
+                    outside the board's overflow-hidden bounds, with no other way to reach it. */}
+                <button
+                  onClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(true); }}
+                  className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  🎥 Modifier le cadre projeté
+                </button>
+              </>
             )}
           </div>
         )}
