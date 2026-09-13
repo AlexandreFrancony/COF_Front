@@ -159,6 +159,12 @@ export default function Board() {
     try {
       const created = await createBoardZone(campaignId, { shape });
       setBoard(created);
+      // New zones always spawn at the board's center (50/50) — exactly where the camera frame
+      // usually sits too, so without auto-selecting it the GM has no way to grab it out from
+      // under the frame (zones have no HUD card to click, unlike tokens).
+      setCameraSelected(false);
+      setSelectedToken(null);
+      setSelectedZone(created.zones[created.zones.length - 1]);
     } catch (error) {
       toast.error(error.message);
     }

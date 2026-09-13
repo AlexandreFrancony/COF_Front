@@ -182,10 +182,11 @@ function HudCard({ entry, tone, selected, onClick }) {
 // The camera is a square window (in %, always camera_width tall too — see the schema comment
 // in board.js: the scene and the projector output share the same 16:9 ratio, so a window w%
 // wide is exactly w% tall, no BOARD_ASPECT_RATIO correction needed like board_zones' shapes).
-// disabled while a token is selected — it otherwise sits above the tokens layer (z-30 vs
-// z-10) and, once resized to cover a good chunk of the board, silently steals every click
-// meant for a pawn underneath it. Letting clicks pass through while a token is selected lets
-// the GM drag that pawn out from under the frame instead of having to shrink the frame first.
+// disabled while a token or zone is selected — it otherwise sits above the tokens/zones layer
+// (z-30 vs z-10) and, once resized to cover a good chunk of the board, silently steals every
+// click meant for a pawn or zone underneath it (new zones always spawn dead center, exactly
+// where the frame usually sits). Letting clicks pass through while something is selected lets
+// the GM drag it out from under the frame instead of having to shrink the frame first.
 function CameraFrame({ board, selected, onSelect, onDragEnd, disabled = false }) {
   const x = board.camera_x ?? 50;
   const y = board.camera_y ?? 50;
@@ -344,7 +345,7 @@ export default function BoardCanvas({
           selected={cameraSelected}
           onSelect={onSelectCamera}
           onDragEnd={onCameraDragEnd}
-          disabled={!!selectedToken}
+          disabled={!!selectedToken || !!selectedZone}
         />
       )}
 
