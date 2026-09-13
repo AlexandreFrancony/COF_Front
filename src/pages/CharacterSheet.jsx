@@ -287,6 +287,8 @@ export default function CharacterSheet() {
             character={character}
             profils={profils}
             peuples={peuples}
+            armures={armures}
+            onArmuresChange={setArmures}
             onRefresh={refreshCharacter}
           />
         ) : (
@@ -993,7 +995,7 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   );
 }
 
-function GmEditPanel({ character, profils, peuples, onRefresh }) {
+function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, onRefresh }) {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [allVoies, setAllVoies] = useState([]);
@@ -1168,6 +1170,8 @@ function GmEditPanel({ character, profils, peuples, onRefresh }) {
           {saving ? 'Sauvegarde...' : 'Sauvegarder les champs ci-dessus'}
         </StepButton>
       </Card>
+
+      <ArmureSelector character={character} armures={armures} isGm onArmuresChange={onArmuresChange} onRefresh={onRefresh} />
 
       <Card className="flex flex-col gap-3">
         <h2 className="font-semibold">Voies possédées</h2>
