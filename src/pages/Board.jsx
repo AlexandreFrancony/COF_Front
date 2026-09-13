@@ -393,111 +393,118 @@ export default function Board() {
           onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(false); }}
         />
 
-        {isGm && cameraSelected && (
+        {/* Always rendered at a fixed width in GM mode (not conditionally mounted) — otherwise
+            the board's flex-1 width jumps every time a selection appears/disappears, resizing
+            the whole 16:9 canvas under the GM's cursor mid-session. */}
+        {isGm && (
           <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
-            <h3 className="font-semibold">🎥 Cadre projeté</h3>
-            <p className="text-xs text-[var(--text-secondary)]">
-              Ce que les joueurs voient sur le mode projecteur. Fais glisser le cadre sur le plateau pour le déplacer.
-            </p>
-
-            <div className="flex items-center justify-between text-sm">
-              <span>Zoom</span>
-              <div className="flex gap-1">
-                <button onClick={() => handleCameraZoom(10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                <button onClick={() => handleCameraZoom(-10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
-              </div>
-            </div>
-
-            <button
-              onClick={handleCameraReset}
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-            >
-              Recentrer sur tout le plateau
-            </button>
-          </div>
-        )}
-
-        {isGm && selectedToken && (
-          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
-            <h3 className="font-semibold">{selectedToken.label}</h3>
-
-            <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">
-              Image du pion
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleTokenImageUpload(selectedToken, e.target.files[0])}
-              />
-            </label>
-
-            <button
-              onClick={() => handleToggleTokenVisible(selectedToken)}
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-            >
-              {selectedToken.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
-            </button>
-
-            <button
-              onClick={() => handleDeleteToken(selectedToken)}
-              className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
-            >
-              Supprimer le pion
-            </button>
-          </div>
-        )}
-
-        {isGm && selectedZone && (
-          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
-            <h3 className="font-semibold">
-              Zone — {ZONE_SHAPES.find(([s]) => s === selectedZone.shape)?.[1]}
-            </h3>
-
-            <label className="flex items-center justify-between text-sm">
-              Couleur
-              <input type="color" value={selectedZone.color} onChange={handleZoneColor} className="w-8 h-8 rounded border border-[var(--border)]" />
-            </label>
-
-            <div className="flex items-center justify-between text-sm">
-              <span>{selectedZone.shape === 'circle' ? 'Rayon' : 'Longueur'}</span>
-              <div className="flex gap-1">
-                <button onClick={() => handleZoneSize(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                <button onClick={() => handleZoneSize(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
-              </div>
-            </div>
-
-            {selectedZone.shape !== 'circle' && (
+            {cameraSelected ? (
               <>
+                <h3 className="font-semibold">🎥 Cadre projeté</h3>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Ce que les joueurs voient sur le mode projecteur. Fais glisser son étiquette pour le déplacer.
+                </p>
+
                 <div className="flex items-center justify-between text-sm">
-                  <span>Largeur</span>
+                  <span>Zoom</span>
                   <div className="flex gap-1">
-                    <button onClick={() => handleZoneWidth(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                    <button onClick={() => handleZoneWidth(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                    <button onClick={() => handleCameraZoom(10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                    <button onClick={() => handleCameraZoom(-10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span>Rotation</span>
-                  <div className="flex gap-1">
-                    <button onClick={() => handleZoneRotation(-15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↺</button>
-                    <button onClick={() => handleZoneRotation(15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↻</button>
-                  </div>
-                </div>
+
+                <button
+                  onClick={handleCameraReset}
+                  className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  Recentrer sur tout le plateau
+                </button>
               </>
+            ) : selectedToken ? (
+              <>
+                <h3 className="font-semibold">{selectedToken.label}</h3>
+
+                <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">
+                  Image du pion
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleTokenImageUpload(selectedToken, e.target.files[0])}
+                  />
+                </label>
+
+                <button
+                  onClick={() => handleToggleTokenVisible(selectedToken)}
+                  className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  {selectedToken.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
+                </button>
+
+                <button
+                  onClick={() => handleDeleteToken(selectedToken)}
+                  className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+                >
+                  Supprimer le pion
+                </button>
+              </>
+            ) : selectedZone ? (
+              <>
+                <h3 className="font-semibold">
+                  Zone — {ZONE_SHAPES.find(([s]) => s === selectedZone.shape)?.[1]}
+                </h3>
+
+                <label className="flex items-center justify-between text-sm">
+                  Couleur
+                  <input type="color" value={selectedZone.color} onChange={handleZoneColor} className="w-8 h-8 rounded border border-[var(--border)]" />
+                </label>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span>{selectedZone.shape === 'circle' ? 'Rayon' : 'Longueur'}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleZoneSize(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                    <button onClick={() => handleZoneSize(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                  </div>
+                </div>
+
+                {selectedZone.shape !== 'circle' && (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Largeur</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => handleZoneWidth(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                        <button onClick={() => handleZoneWidth(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Rotation</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => handleZoneRotation(-15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↺</button>
+                        <button onClick={() => handleZoneRotation(15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↻</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <button
+                  onClick={handleToggleZoneVisible}
+                  className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  {selectedZone.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
+                </button>
+
+                <button
+                  onClick={handleDeleteZone}
+                  className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+                >
+                  Supprimer la zone
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--text-secondary)]">
+                Sélectionne un pion, une zone ou le cadre projeté (son étiquette) pour le modifier.
+              </p>
             )}
-
-            <button
-              onClick={handleToggleZoneVisible}
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-            >
-              {selectedZone.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
-            </button>
-
-            <button
-              onClick={handleDeleteZone}
-              className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
-            >
-              Supprimer la zone
-            </button>
           </div>
         )}
       </div>
