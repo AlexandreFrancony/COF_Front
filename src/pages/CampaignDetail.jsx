@@ -4,9 +4,11 @@ import toast from 'react-hot-toast';
 import {
   getCampaign, getCampaignCharacters, getCampaignInvites, createInvite, revokeInvite,
   getCampaignScenarios, createScenario, updateScenario, deleteScenario,
+  createScenarioToken, updateScenarioToken, deleteScenarioToken, launchScenario, getBoardMedia,
   createCharacter, deleteCharacter,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import BoardCanvas from '../components/BoardCanvas';
 
 // mailto: needs no SMTP setup — it just opens the GM's own mail client with the message
 // pre-filled, ready to send.
@@ -24,6 +26,7 @@ export default function CampaignDetail() {
   const [characters, setCharacters] = useState([]);
   const [invites, setInvites] = useState([]);
   const [scenarios, setScenarios] = useState([]);
+  const [mediaLibrary, setMediaLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [characterName, setCharacterName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +49,7 @@ export default function CampaignDetail() {
       if (isGm) {
         setInvites(await getCampaignInvites(id));
         setScenarios(await getCampaignScenarios(id));
+        setMediaLibrary(await getBoardMedia());
       }
     } catch (error) {
       toast.error(error.message);
@@ -142,6 +146,69 @@ export default function CampaignDetail() {
     try {
       await deleteScenario(scenarioId);
       setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleSetScenarioBackground = async (scenarioId, backgroundMediaId) => {
+    try {
+      const updated = await updateScenario(scenarioId, { background_media_id: backgroundMediaId });
+      setScenarios((prev) => prev.map((s) => (s.id === scenarioId ? updated : s)));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleAddScenarioToken = async (scenarioId, data) => {
+    try {
+      const updated = await createScenarioToken(scenarioId, data);
+      setScenarios((prev) => prev.map((s) => (s.id === scenarioId ? updated : s)));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  // Optimistic: the mini prep-board's drag-end already knows the final x/y, no need to wait
+  // for the round-trip before the token visually settles (same pattern as the live board).
+  const handleMoveScenarioToken = async (scenarioId, tokenId, x, y) => {
+    setScenarios((prev) => prev.map((s) => (
+      s.id === scenarioId ? { ...s, tokens: s.tokens.map((t) => (t.id === tokenId ? { ...t, x, y } : t)) } : s
+    )));
+    try {
+      await updateScenarioToken(tokenId, { x, y });
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleToggleScenarioTokenVisible = async (scenarioId, token) => {
+    try {
+      const updated = await updateScenarioToken(token.id, { visible_to_players: !token.visible_to_players });
+      setScenarios((prev) => prev.map((s) => (
+        s.id === scenarioId ? { ...s, tokens: s.tokens.map((t) => (t.id === token.id ? updated : t)) } : s
+      )));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteScenarioToken = async (scenarioId, tokenId) => {
+    try {
+      await deleteScenarioToken(tokenId);
+      setScenarios((prev) => prev.map((s) => (
+        s.id === scenarioId ? { ...s, tokens: s.tokens.filter((t) => t.id !== tokenId) } : s
+      )));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleLaunchScenario = async (scenarioId) => {
+    try {
+      const { tokens_added } = await launchScenario(scenarioId);
+      toast.success(`Scénario lancé — ${tokens_added} pion(s) ajouté(s) au plateau`);
+      navigate(`/campaigns/${id}/board`);
     } catch (error) {
       toast.error(error.message);
     }
@@ -271,8 +338,16 @@ export default function CampaignDetail() {
                   <ScenarioItem
                     key={s.id}
                     scenario={s}
+                    characters={characters}
+                    mediaLibrary={mediaLibrary}
                     onSaveNotes={(notes) => handleUpdateScenarioNotes(s.id, notes)}
                     onDelete={() => handleDeleteScenario(s.id)}
+                    onSetBackground={(mediaId) => handleSetScenarioBackground(s.id, mediaId)}
+                    onAddToken={(data) => handleAddScenarioToken(s.id, data)}
+                    onMoveToken={(tokenId, x, y) => handleMoveScenarioToken(s.id, tokenId, x, y)}
+                    onToggleTokenVisible={(token) => handleToggleScenarioTokenVisible(s.id, token)}
+                    onDeleteToken={(tokenId) => handleDeleteScenarioToken(s.id, tokenId)}
+                    onLaunch={() => handleLaunchScenario(s.id)}
                   />
                 ))}
               </div>
@@ -398,9 +473,30 @@ export default function CampaignDetail() {
   );
 }
 
-function ScenarioItem({ scenario, onSaveNotes, onDelete }) {
+// A scenario bundles prep notes with an optional background (picked from the shared board_media
+// library) and a set of prepared tokens, laid out ahead of time on a small read-only-sized
+// preview of that background (reuses BoardCanvas — same drag-to-position feel as the live
+// board, just without grid/zones/camera, which don't make sense while merely prepping). None of
+// this touches the live board until "Lancer" is clicked (additive: background + tokens get
+// copied onto the real board_states/board_tokens, nothing already there is ever cleared).
+function ScenarioItem({
+  scenario, characters, mediaLibrary, onSaveNotes, onDelete,
+  onSetBackground, onAddToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onLaunch,
+}) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(scenario.notes || '');
+  const [newTokenLabel, setNewTokenLabel] = useState('');
+  const [selectedToken, setSelectedToken] = useState(null);
+
+  const previewBoard = { background_url: scenario.background_url, background_type: scenario.background_type, tokens: scenario.tokens, zones: [] };
+  const tokenlessCharacters = characters.filter((c) => !scenario.tokens.some((t) => t.character_id === c.id));
+
+  const handleAddToken = (e) => {
+    e.preventDefault();
+    if (!newTokenLabel.trim()) return;
+    onAddToken({ label: newTokenLabel.trim() });
+    setNewTokenLabel('');
+  };
 
   return (
     <div className="rounded-lg bg-[var(--bg-card)] border border-[var(--border)] p-3">
@@ -408,22 +504,103 @@ function ScenarioItem({ scenario, onSaveNotes, onDelete }) {
         <button onClick={() => setOpen((o) => !o)} className="font-medium text-left hover:text-[var(--accent)]">
           {scenario.name}
         </button>
-        <button
-          onClick={onDelete}
-          className="text-xs px-2 py-0.5 rounded border border-red-400 text-red-500 hover:bg-red-500/10 shrink-0"
-        >
-          Supprimer
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onLaunch}
+            className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+            title="Applique le fond et ajoute les pions préparés au plateau en direct"
+          >
+            🚀 Lancer
+          </button>
+          <button
+            onClick={onDelete}
+            className="text-xs px-2 py-0.5 rounded border border-red-400 text-red-500 hover:bg-red-500/10"
+          >
+            Supprimer
+          </button>
+        </div>
       </div>
       {open && (
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => onSaveNotes(notes)}
-          placeholder="Notes de préparation..."
-          rows={4}
-          className="w-full mt-2 px-3 py-2 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
-        />
+        <div className="mt-2 flex flex-col gap-3">
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => onSaveNotes(notes)}
+            placeholder="Notes de préparation..."
+            rows={4}
+            className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+          />
+
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[var(--text-secondary)]">Fond :</span>
+            <select
+              value={scenario.background_media_id || ''}
+              onChange={(e) => onSetBackground(Number(e.target.value))}
+              className="flex-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            >
+              <option value="" disabled>Choisir dans la bibliothèque...</option>
+              {mediaLibrary.map((m) => (
+                <option key={m.id} value={m.id}>{m.label || m.url}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ aspectRatio: '16 / 9' }}>
+            <BoardCanvas
+              board={previewBoard}
+              isGm
+              className="relative w-full h-full bg-[var(--bg-input)]"
+              selectedToken={selectedToken}
+              onSelectToken={setSelectedToken}
+              onTokenDragEnd={(tokenId, x, y) => onMoveToken(tokenId, x, y)}
+              onBackgroundClick={() => setSelectedToken(null)}
+            />
+          </div>
+
+          {selectedToken && (
+            <div className="flex items-center gap-3 text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
+              <span className="font-medium flex-1">{selectedToken.label}</span>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={selectedToken.visible_to_players}
+                  onChange={() => { onToggleTokenVisible(selectedToken); setSelectedToken(null); }}
+                />
+                Visible aux joueurs
+              </label>
+              <button
+                onClick={() => { onDeleteToken(selectedToken.id); setSelectedToken(null); }}
+                className="text-red-500 hover:underline"
+              >
+                Supprimer ce pion
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {tokenlessCharacters.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => onAddToken({ label: c.name, character_id: c.id })}
+                className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+              >
+                + {c.name}
+              </button>
+            ))}
+            <form onSubmit={handleAddToken} className="flex gap-1">
+              <input
+                type="text"
+                placeholder="Nom du pion (PNJ)"
+                value={newTokenLabel}
+                onChange={(e) => setNewTokenLabel(e.target.value)}
+                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]"
+              />
+              <button type="submit" className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]">
+                Ajouter un pion
+              </button>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -81,6 +81,14 @@ export const updateScenario = (scenarioId, data) =>
   request(`/scenarios/${scenarioId}`, { method: 'PATCH', body: JSON.stringify(data) });
 export const deleteScenario = (scenarioId) =>
   request(`/scenarios/${scenarioId}`, { method: 'DELETE' });
+export const createScenarioToken = (scenarioId, data) =>
+  request(`/scenarios/${scenarioId}/tokens`, { method: 'POST', body: JSON.stringify(data) });
+export const updateScenarioToken = (tokenId, data) =>
+  request(`/scenario-tokens/${tokenId}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteScenarioToken = (tokenId) =>
+  request(`/scenario-tokens/${tokenId}`, { method: 'DELETE' });
+export const launchScenario = (scenarioId) =>
+  request(`/scenarios/${scenarioId}/launch`, { method: 'POST' });
 
 // ============================================================================
 // CHARACTERS
