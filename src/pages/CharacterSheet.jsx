@@ -324,8 +324,12 @@ export default function CharacterSheet() {
             label={`${STAT_EMOJI.Chance} Chance`} current={character.points_chance_current} max={character.points_chance} koLabel={false}
             onChange={(v) => updateCharacter(id, { points_chance_current: v }).then(refreshCharacter)}
           />
+          <StatAdjuster
+            label={`${STAT_EMOJI.DR} DR`} current={character.dr_current} max={character.dr_max} koLabel={false}
+            suffix={character.dr_die ? ` ${character.dr_die}` : ''}
+            onChange={(v) => updateCharacter(id, { dr_current: v }).then(refreshCharacter)}
+          />
           {[
-            ['DR', character.de_recuperation],
             ['Défense', character.defense],
             ['Initiative', character.initiative],
           ].map(([label, value]) => (
@@ -1852,7 +1856,7 @@ function statBarColor(current, max) {
 // koLabel controls whether hitting 0 reads as "K.O." (down/unconscious) — true for PV, false
 // for PM: running out of mana just means no more spells, it doesn't knock anyone out. Both
 // still get the same empty-red bar, only the wording differs.
-function StatAdjuster({ label, current, max, onChange, koLabel = true }) {
+function StatAdjuster({ label, current, max, onChange, koLabel = true, suffix = '' }) {
   const [busy, setBusy] = useState(false);
   const isEmpty = max > 0 && current <= 0;
   const isDown = isEmpty && koLabel;
@@ -1883,8 +1887,8 @@ function StatAdjuster({ label, current, max, onChange, koLabel = true }) {
         >
           −
         </button>
-        <span className={`font-bold text-lg w-14 ${isDown ? 'text-red-500' : ''}`}>
-          {isDown ? 'K.O.' : `${current}/${max}`}
+        <span className={`font-bold text-lg ${suffix ? 'w-20' : 'w-14'} ${isDown ? 'text-red-500' : ''}`}>
+          {isDown ? 'K.O.' : `${current}/${max}${suffix}`}
         </span>
         <button
           onClick={() => adjust(1)}
