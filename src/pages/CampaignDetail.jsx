@@ -4,11 +4,13 @@ import toast from 'react-hot-toast';
 import {
   getCampaign, getCampaignCharacters, getCampaignInvites, createInvite, revokeInvite,
   getCampaignScenarios, createScenario, updateScenario, deleteScenario,
-  createScenarioToken, updateScenarioToken, deleteScenarioToken, launchScenario, getBoardMedia,
+  createScenarioToken, updateScenarioToken, deleteScenarioToken,
+  createScenarioZone, updateScenarioZone, deleteScenarioZone,
+  launchScenario, getBoardMedia, uploadBoardMedia, deleteBoardMedia, uploadBoardImage,
   createCharacter, deleteCharacter,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import BoardCanvas from '../components/BoardCanvas';
+import BoardEditor from '../components/BoardEditor';
 
 // mailto: needs no SMTP setup — it just opens the GM's own mail client with the message
 // pre-filled, ready to send.
@@ -151,63 +153,17 @@ export default function CampaignDetail() {
     }
   };
 
-  const handleSetScenarioBackground = async (scenarioId, backgroundMediaId) => {
-    try {
-      const updated = await updateScenario(scenarioId, { background_media_id: backgroundMediaId });
-      setScenarios((prev) => prev.map((s) => (s.id === scenarioId ? updated : s)));
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  const handleAddScenarioToken = async (scenarioId, data) => {
-    try {
-      const updated = await createScenarioToken(scenarioId, data);
-      setScenarios((prev) => prev.map((s) => (s.id === scenarioId ? updated : s)));
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  // Optimistic: the mini prep-board's drag-end already knows the final x/y, no need to wait
-  // for the round-trip before the token visually settles (same pattern as the live board).
-  const handleMoveScenarioToken = async (scenarioId, tokenId, x, y) => {
-    setScenarios((prev) => prev.map((s) => (
-      s.id === scenarioId ? { ...s, tokens: s.tokens.map((t) => (t.id === tokenId ? { ...t, x, y } : t)) } : s
-    )));
-    try {
-      await updateScenarioToken(tokenId, { x, y });
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  const handleToggleScenarioTokenVisible = async (scenarioId, token) => {
-    try {
-      const updated = await updateScenarioToken(token.id, { visible_to_players: !token.visible_to_players });
-      setScenarios((prev) => prev.map((s) => (
-        s.id === scenarioId ? { ...s, tokens: s.tokens.map((t) => (t.id === token.id ? updated : t)) } : s
-      )));
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  const handleDeleteScenarioToken = async (scenarioId, tokenId) => {
-    try {
-      await deleteScenarioToken(tokenId);
-      setScenarios((prev) => prev.map((s) => (
-        s.id === scenarioId ? { ...s, tokens: s.tokens.filter((t) => t.id !== tokenId) } : s
-      )));
-    } catch (error) {
-      toast.error(error.message);
-    }
+  // Every scenario-scoped mutation (background, grid, token size, tokens, zones — see
+  // ScenarioItem/BoardEditor) resolves with the full updated scenario, same contract as the
+  // live board's own handlers resolving with the full board. One generic setter covers all of them.
+  const handleScenarioChange = (updated) => {
+    setScenarios((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   };
 
   const handleLaunchScenario = async (scenarioId) => {
     try {
-      const { tokens_added } = await launchScenario(scenarioId);
-      toast.success(`Scénario lancé — ${tokens_added} pion(s) ajouté(s) au plateau`);
+      const { tokens_added, zones_added } = await launchScenario(scenarioId);
+      toast.success(`Scénario lancé — ${tokens_added} pion(s) et ${zones_added} zone(s) ajoutés au plateau`);
       navigate(`/campaigns/${id}/board`);
     } catch (error) {
       toast.error(error.message);
@@ -338,15 +294,13 @@ export default function CampaignDetail() {
                   <ScenarioItem
                     key={s.id}
                     scenario={s}
+                    campaignId={id}
                     characters={characters}
                     mediaLibrary={mediaLibrary}
+                    onMediaLibraryChange={setMediaLibrary}
                     onSaveNotes={(notes) => handleUpdateScenarioNotes(s.id, notes)}
                     onDelete={() => handleDeleteScenario(s.id)}
-                    onSetBackground={(mediaId) => handleSetScenarioBackground(s.id, mediaId)}
-                    onAddToken={(data) => handleAddScenarioToken(s.id, data)}
-                    onMoveToken={(tokenId, x, y) => handleMoveScenarioToken(s.id, tokenId, x, y)}
-                    onToggleTokenVisible={(token) => handleToggleScenarioTokenVisible(s.id, token)}
-                    onDeleteToken={(tokenId) => handleDeleteScenarioToken(s.id, tokenId)}
+                    onScenarioChange={handleScenarioChange}
                     onLaunch={() => handleLaunchScenario(s.id)}
                   />
                 ))}
@@ -473,116 +427,95 @@ export default function CampaignDetail() {
   );
 }
 
-// A scenario bundles prep notes with an optional background (picked from the shared board_media
-// library) and a set of prepared tokens, laid out ahead of time on a small read-only-sized
-// preview of that background (reuses BoardCanvas — same drag-to-position feel as the live
-// board, just without grid/zones/camera, which don't make sense while merely prepping). None of
-// this touches the live board until "Lancer" is clicked (additive: background + tokens get
-// copied onto the real board_states/board_tokens, nothing already there is ever cleared).
+// A scenario is a full mini board_states — background, grid, token size, tokens and zones — kept
+// separate from the campaign's live board until "Lancer" copies it over (additive only: nothing
+// already on the live board is ever cleared). It shares BoardEditor with the real Board.jsx page
+// instead of a stripped-down reimplementation, so prep never drifts out of feature parity with
+// the live board — the same toolbar, canvas and side panel, just pointed at scenario-scoped
+// endpoints (see the handlers below) instead of the live board's.
 function ScenarioItem({
-  scenario, characters, mediaLibrary, onSaveNotes, onDelete,
-  onSetBackground, onAddToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onLaunch,
+  scenario, campaignId, characters, mediaLibrary, onMediaLibraryChange,
+  onSaveNotes, onDelete, onScenarioChange, onLaunch,
 }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(scenario.notes || '');
-  const [newTokenLabel, setNewTokenLabel] = useState('');
-  const [selectedToken, setSelectedToken] = useState(null);
 
-  const previewBoard = { background_url: scenario.background_url, background_type: scenario.background_type, tokens: scenario.tokens, zones: [] };
-  const tokenlessCharacters = characters.filter((c) => !scenario.tokens.some((t) => t.character_id === c.id));
+  // Every successful mutation below applies the fresh scenario to the parent's list — same
+  // "handler resolves with the full updated object" contract BoardEditor already expects from
+  // the live board's own handlers.
+  const apply = (promise) => promise.then((updated) => { onScenarioChange(updated); return updated; });
+  const applyOrToast = (promise) => apply(promise).catch((error) => toast.error(error.message));
+  // onAddZone/onPatchZone must never throw (BoardEditor reads .zones off whatever they resolve
+  // to, to auto-select the new/patched zone) — on failure, toast and hand back the unchanged
+  // scenario instead, exactly like Board.jsx's own handleAddZone/handlePatchZone do for the live board.
+  const applyOrFallback = (promise) => apply(promise).catch((error) => { toast.error(error.message); return scenario; });
 
-  const handleAddToken = (e) => {
-    e.preventDefault();
-    if (!newTokenLabel.trim()) return;
-    onAddToken({ label: newTokenLabel.trim() });
-    setNewTokenLabel('');
+  const handleUploadBackground = async (file) => {
+    try {
+      const media = await uploadBoardMedia(file);
+      onMediaLibraryChange((prev) => [media, ...prev]);
+      await applyOrToast(updateScenario(scenario.id, { background_media_id: media.id }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+  const handlePickBackground = (media) => applyOrToast(updateScenario(scenario.id, { background_media_id: media.id }));
+  const handleDeleteMedia = async (media) => {
+    try {
+      await deleteBoardMedia(media.id);
+      onMediaLibraryChange((prev) => prev.filter((m) => m.id !== media.id));
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
-  // Shared between the small inline preview and the enlarged modal (only one renders at a
-  // time) — the canvas itself is identical, it just ends up bigger inside the modal's wider
-  // max-w-5xl container versus the narrow inline card.
-  const prepBoard = () => (
-    <>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-[var(--text-secondary)]">Fond :</span>
-        <select
-          value={scenario.background_media_id || ''}
-          onChange={(e) => onSetBackground(Number(e.target.value))}
-          className="flex-1 px-2 py-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
-        >
-          <option value="" disabled>Choisir dans la bibliothèque...</option>
-          {mediaLibrary.map((m) => (
-            <option key={m.id} value={m.id}>{m.label || m.url}</option>
-          ))}
-        </select>
-        {!expanded && (
-          <button
-            onClick={() => setExpanded(true)}
-            title="Ouvrir en plus grand pour positionner les pions plus précisément"
-            className="shrink-0 px-2 py-1 text-xs rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            ⛶ Agrandir
-          </button>
-        )}
-      </div>
+  const handleToggleGrid = () => applyOrToast(updateScenario(scenario.id, { grid_visible: !(scenario.grid_visible ?? false) }));
+  const handleTokenSize = (delta) => applyOrToast(updateScenario(scenario.id, { token_size_delta: delta }));
 
-      <div className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ aspectRatio: '16 / 9' }}>
-        <BoardCanvas
-          board={previewBoard}
-          isGm
-          className="relative w-full h-full bg-[var(--bg-input)]"
-          selectedToken={selectedToken}
-          onSelectToken={setSelectedToken}
-          onTokenDragEnd={(tokenId, x, y) => onMoveToken(tokenId, x, y)}
-          onBackgroundClick={() => setSelectedToken(null)}
-        />
-      </div>
+  const handleAddToken = (label) => applyOrToast(createScenarioToken(scenario.id, { label }));
+  const handleAddCharacterToken = (character) =>
+    applyOrToast(createScenarioToken(scenario.id, { label: character.name, character_id: character.id }));
+  const handleMoveToken = (tokenId, x, y) => applyOrToast(updateScenarioToken(tokenId, { x, y }));
+  const handleToggleTokenVisible = (token) =>
+    applyOrToast(updateScenarioToken(token.id, { visible_to_players: !token.visible_to_players }));
+  const handleDeleteToken = (token) => applyOrToast(deleteScenarioToken(token.id));
+  const handleUploadTokenImage = async (token, file) => {
+    try {
+      const { url } = await uploadBoardImage(campaignId, file);
+      await applyOrToast(updateScenarioToken(token.id, { image_url: url }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
 
-      {selectedToken && (
-        <div className="flex items-center gap-3 text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
-          <span className="font-medium flex-1">{selectedToken.label}</span>
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={selectedToken.visible_to_players}
-              onChange={() => { onToggleTokenVisible(selectedToken); setSelectedToken(null); }}
-            />
-            Visible aux joueurs
-          </label>
-          <button
-            onClick={() => { onDeleteToken(selectedToken.id); setSelectedToken(null); }}
-            className="text-red-500 hover:underline"
-          >
-            Supprimer ce pion
-          </button>
-        </div>
-      )}
+  const handleAddZone = (shape) => applyOrFallback(createScenarioZone(scenario.id, { shape }));
+  const handleMoveZone = (zoneId, x, y) => applyOrToast(updateScenarioZone(zoneId, { x, y }));
+  const handlePatchZone = (zoneId, data) => applyOrFallback(updateScenarioZone(zoneId, data));
+  const handleDeleteZone = (zone) => applyOrToast(deleteScenarioZone(zone.id));
 
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        {tokenlessCharacters.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onAddToken({ label: c.name, character_id: c.id })}
-            className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            + {c.name}
-          </button>
-        ))}
-        <form onSubmit={handleAddToken} className="flex gap-1">
-          <input
-            type="text"
-            placeholder="Nom du pion (PNJ)"
-            value={newTokenLabel}
-            onChange={(e) => setNewTokenLabel(e.target.value)}
-            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]"
-          />
-          <button type="submit" className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]">
-            Ajouter un pion
-          </button>
-        </form>
-      </div>
-    </>
+  const boardEditor = (
+    <BoardEditor
+      board={scenario}
+      characters={characters}
+      mediaLibrary={mediaLibrary}
+      onUploadBackground={handleUploadBackground}
+      onPickBackground={handlePickBackground}
+      onDeleteMedia={handleDeleteMedia}
+      onToggleGrid={handleToggleGrid}
+      onTokenSize={handleTokenSize}
+      onAddToken={handleAddToken}
+      onAddCharacterToken={handleAddCharacterToken}
+      onMoveToken={handleMoveToken}
+      onToggleTokenVisible={handleToggleTokenVisible}
+      onDeleteToken={handleDeleteToken}
+      onUploadTokenImage={handleUploadTokenImage}
+      onAddZone={handleAddZone}
+      onMoveZone={handleMoveZone}
+      onPatchZone={handlePatchZone}
+      onDeleteZone={handleDeleteZone}
+      withCamera={false}
+    />
   );
 
   return (
@@ -617,7 +550,20 @@ function ScenarioItem({
             rows={4}
             className="w-full px-3 py-2 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           />
-          {!expanded && prepBoard()}
+          {!expanded && (
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setExpanded(true)}
+                  title="Ouvrir en plus grand pour positionner les pions/zones plus précisément"
+                  className="px-2 py-1 text-xs rounded-lg border border-[var(--border)] hover:border-[var(--accent)]"
+                >
+                  ⛶ Agrandir
+                </button>
+              </div>
+              {boardEditor}
+            </div>
+          )}
         </div>
       )}
 
@@ -627,7 +573,7 @@ function ScenarioItem({
           onClick={() => setExpanded(false)}
         >
           <div
-            className="w-full max-w-5xl flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+            className="w-full max-w-5xl max-h-[90vh] overflow-y-auto flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -639,7 +585,7 @@ function ScenarioItem({
                 ✕ Fermer
               </button>
             </div>
-            {prepBoard()}
+            {boardEditor}
           </div>
         </div>
       )}
