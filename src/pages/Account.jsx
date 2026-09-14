@@ -1,14 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { changePassword } from '../utils/api';
+import { changePassword, discordLinkInit } from '../utils/api';
+import { getDiscordMessage } from '../utils/discordErrors';
+import DiscordButton from '../components/DiscordButton';
 
 export default function Account() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const code = searchParams.get('discord');
+    const message = getDiscordMessage(code);
+    if (!message) return;
+    if (code === 'linked') toast.success(message);
+    else toast.error(message);
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -79,6 +91,22 @@ export default function Account() {
             {submitting ? 'Changement...' : 'Changer le mot de passe'}
           </button>
         </form>
+
+        <div className="cof-plate p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
+          <h2 className="font-semibold">Compte Discord</h2>
+          {user?.discord_id ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Lié à <strong className="text-[var(--text-primary)]">{user.discord_username}</strong>
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Lie ton compte Discord pour te connecter en un clic la prochaine fois.
+              </p>
+              <DiscordButton label="Lier mon compte Discord" fetchUrl={discordLinkInit} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

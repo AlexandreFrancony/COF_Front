@@ -7,10 +7,11 @@ import {
   createScenarioToken, updateScenarioToken, deleteScenarioToken,
   createScenarioZone, updateScenarioZone, deleteScenarioZone,
   launchScenario, getBoardMedia, uploadBoardMedia, deleteBoardMedia, uploadBoardImage,
-  createCharacter, deleteCharacter,
+  createCharacter, deleteCharacter, updateCampaign,
 } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import BoardEditor from '../components/BoardEditor';
+import NotesPanel from '../components/NotesPanel';
 
 // mailto: needs no SMTP setup — it just opens the GM's own mail client with the message
 // pre-filled, ready to send.
@@ -64,6 +65,18 @@ export default function CampaignDetail() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const handleSaveWebhook = async (url) => {
+    const trimmed = url.trim();
+    if (trimmed === (campaign.discord_webhook_url || '')) return;
+    try {
+      await updateCampaign(id, { discord_webhook_url: trimmed || null });
+      await load();
+      toast.success(trimmed ? 'Webhook Discord enregistré' : 'Webhook Discord retiré');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
 
   const handleCreateInvite = async (e) => {
     e.preventDefault();
@@ -206,6 +219,8 @@ export default function CampaignDetail() {
             <p className="text-[var(--text-secondary)] mt-1">{campaign.description}</p>
           )}
         </div>
+
+        <NotesPanel campaignId={id} />
 
         <section>
           <h2 className="font-semibold mb-2">Personnages</h2>
@@ -428,6 +443,23 @@ export default function CampaignDetail() {
                 ))}
               </ul>
             )}
+          </section>
+        )}
+
+        {isGm && (
+          <section>
+            <h2 className="font-semibold mb-2">Notifications Discord</h2>
+            <p className="text-xs text-[var(--text-secondary)] mb-2">
+              Colle l'URL d'un webhook Discord (salon → Paramètres → Intégrations → Webhooks) pour recevoir un
+              message quand un personnage monte de niveau ou tombe à 0 PV.
+            </p>
+            <input
+              type="url"
+              defaultValue={campaign.discord_webhook_url || ''}
+              onBlur={(e) => handleSaveWebhook(e.target.value)}
+              placeholder="https://discord.com/api/webhooks/..."
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+            />
           </section>
         )}
       </div>

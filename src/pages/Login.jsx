@@ -1,14 +1,23 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { discordLoginInit } from '../utils/api';
+import { getDiscordMessage } from '../utils/discordErrors';
+import DiscordButton from '../components/DiscordButton';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const message = getDiscordMessage(searchParams.get('discord'));
+    if (message) toast.error(message);
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,6 +64,14 @@ export default function Login() {
         >
           {submitting ? 'Connexion...' : 'Se connecter'}
         </button>
+
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+          <div className="flex-1 h-px bg-[var(--border)]" />
+          ou
+          <div className="flex-1 h-px bg-[var(--border)]" />
+        </div>
+
+        <DiscordButton label="Se connecter avec Discord" fetchUrl={discordLoginInit} />
 
         <Link to="/forgot-password" className="text-sm text-center text-[var(--text-secondary)] hover:text-[var(--accent)]">
           Mot de passe oublié ?

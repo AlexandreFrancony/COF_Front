@@ -13,6 +13,7 @@ import GlossaireVoies from './pages/GlossaireVoies';
 import Account from './pages/Account';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import DiscordCallback from './pages/DiscordCallback';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -65,6 +66,7 @@ function AppRoutes() {
       <Route path="/invites/:token" element={<InviteAccept />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/discord-callback" element={<DiscordCallback />} />
       <Route
         path="/campaigns"
         element={

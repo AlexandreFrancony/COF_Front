@@ -67,6 +67,13 @@ export const resetPassword = (token, password) =>
     body: JSON.stringify({ token, password }),
   });
 
+export const discordLoginInit = () => request('/auth/discord/login-init');
+
+export const discordLinkInit = () => request('/auth/discord/link-init');
+
+export const discordInviteInit = (inviteToken) =>
+  request(`/auth/discord/invite-init?token=${encodeURIComponent(inviteToken)}`);
+
 // ============================================================================
 // CAMPAIGNS
 // ============================================================================
@@ -248,6 +255,13 @@ export async function uploadCharacterAvatar(characterId, file) {
 // Lives outside /campaigns on purpose — see the comment in COF_Back/src/routes/board.js.
 export const getBoardStreamUrl = (campaignId) =>
   `${API_URL}/board-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
+
+// Shared campaign notes — same query-token trick, see COF_Back/src/routes/notes.js.
+export const getCampaignNotes = (campaignId) => request(`/campaigns/${campaignId}/notes`);
+export const updateCampaignNotes = (campaignId, content) =>
+  request(`/campaigns/${campaignId}/notes`, { method: 'PATCH', body: JSON.stringify({ content }) });
+export const getNotesStreamUrl = (campaignId) =>
+  `${API_URL}/notes-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
 
 // Reusable library of uploaded backgrounds (images + mp4 ambiance videos), shared across campaigns.
 export const getBoardMedia = () => request('/board-media');

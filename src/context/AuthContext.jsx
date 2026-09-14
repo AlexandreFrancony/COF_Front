@@ -33,6 +33,15 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // Discord OAuth callback hands us a ready-made JWT directly (no credentials to post) —
+  // just store it and fetch the profile it grants access to, same end state as login().
+  const loginWithToken = useCallback(async (token) => {
+    setToken(token);
+    const data = await getMe();
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const logout = useCallback(() => {
     clearToken();
     setUser(null);
@@ -50,6 +59,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     isGm: user?.role === 'gm',
     login,
+    loginWithToken,
     logout,
     refresh,
   };

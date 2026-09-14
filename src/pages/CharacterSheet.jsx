@@ -75,9 +75,29 @@ function Card({ children, className = '', title, headerAction }) {
 // who can load this sheet (owner or GM, same as armor/weapon selection below — cosmetic, not
 // gated behind Mode édition), the backend enforces the same access check either way.
 function CharacterAvatar({ character, onRefresh }) {
+  const { user } = useAuth();
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [emoji, setEmoji] = useState(character.avatar_emoji || '');
+
+  // Only the character's own owner has a Discord avatar worth offering here — a GM editing
+  // someone else's sheet has no business stamping their own face on a player's character.
+  // discord_avatar_hash is null for the small minority still on Discord's default avatar
+  // (no custom picture uploaded) — that one isn't served from this CDN path, so skip it.
+  const canUseDiscordAvatar = character.user_id === user?.id && user?.discord_id && user?.discord_avatar_hash;
+  const discordAvatarUrl = canUseDiscordAvatar
+    ? `https://cdn.discordapp.com/avatars/${user.discord_id}/${user.discord_avatar_hash}.png?size=128`
+    : null;
+
+  const useDiscordAvatar = async () => {
+    try {
+      await updateCharacter(character.id, { avatar_url: discordAvatarUrl });
+      setEmoji('');
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -134,6 +154,16 @@ function CharacterAvatar({ character, onRefresh }) {
         title="Emoji utilisé si aucune photo n'est définie"
         className="w-16 px-1 py-0.5 text-xs text-center rounded border border-[var(--border)] bg-[var(--bg-input)]"
       />
+      {canUseDiscordAvatar && character.avatar_url !== discordAvatarUrl && (
+        <button
+          type="button"
+          onClick={useDiscordAvatar}
+          title="Utiliser ma photo de profil Discord"
+          className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--accent)] underline"
+        >
+          Avatar Discord
+        </button>
+      )}
     </div>
   );
 }

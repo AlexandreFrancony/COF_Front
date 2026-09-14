@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getInvite, acceptInvite } from '../utils/api';
+import { getInvite, acceptInvite, discordInviteInit } from '../utils/api';
 import { setToken } from '../utils/storage';
 import { useAuth } from '../context/AuthContext';
+import { getDiscordMessage } from '../utils/discordErrors';
+import DiscordButton from '../components/DiscordButton';
 
 export default function InviteAccept() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, isAuthenticated, refresh } = useAuth();
   const [invite, setInvite] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +26,11 @@ export default function InviteAccept() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    const message = getDiscordMessage(searchParams.get('discord'));
+    if (message) toast.error(message);
+  }, [searchParams]);
 
   const claim = async (data) => {
     setSubmitting(true);
@@ -107,6 +115,14 @@ export default function InviteAccept() {
           <p className="text-sm text-[var(--text-secondary)] mt-1">
             Personnage : <strong>{invite.character_name}</strong>
           </p>
+        </div>
+
+        <DiscordButton label="Continuer avec Discord" fetchUrl={() => discordInviteInit(token)} />
+
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+          <div className="flex-1 h-px bg-[var(--border)]" />
+          ou par email
+          <div className="flex-1 h-px bg-[var(--border)]" />
         </div>
 
         <p className="text-xs text-[var(--text-secondary)] -mt-2">
