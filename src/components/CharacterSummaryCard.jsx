@@ -1,5 +1,11 @@
 import { resolveAvatar, StatBar } from './BoardCanvas';
 
+// Same order/emoji as CharacterSheet.jsx's own CARACS/CARAC_EMOJI — kept as a separate literal
+// here rather than a shared import since CharacterSheet.jsx isn't otherwise a dependency of the
+// board (avoids pulling its whole module graph in for 7 emoji).
+const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
+const CARAC_EMOJI = { AGI: '🤸', CON: '🫀', FOR: '💪', PER: '👁️', CHA: '✨', INT: '🧠', VOL: '🔥' };
+
 // Shown when a character's pawn or HUD card is clicked (on the live board and the read-only
 // player view alike) — the exact same stats already broadcast in the HUD, just bigger and
 // spelled out, since it's the summary of what's already visible rather than a deeper look
@@ -39,6 +45,19 @@ export default function CharacterSummaryCard({ entry }) {
             <span>🛡️ Déf {entry.defense}</span>
             <span>⚡ Init {entry.initiative}</span>
           </div>
+
+          {entry.caracteristiques && (
+            <div className="grid grid-cols-4 gap-1.5 text-center">
+              {CARACS.map((c) => (
+                <div key={c} className="flex flex-col gap-0.5 p-1.5 rounded bg-[var(--bg-input)]">
+                  <span className="text-[10px] text-[var(--text-secondary)]">{CARAC_EMOJI[c]} {c}</span>
+                  <span className="font-semibold">
+                    {entry.caracteristiques[c] >= 0 ? '+' : ''}{entry.caracteristiques[c]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
