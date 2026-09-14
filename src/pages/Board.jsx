@@ -6,6 +6,7 @@ import BoardCanvas from '../components/BoardCanvas';
 import BoardEditor from '../components/BoardEditor';
 import NotesPanel from '../components/NotesPanel';
 import CharacterSummaryCard from '../components/CharacterSummaryCard';
+import CreatureSummaryCard from '../components/CreatureSummaryCard';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
@@ -96,9 +97,9 @@ export default function Board() {
     }
   };
 
-  const handleAddToken = async (label, hpMax) => {
+  const handleAddToken = async (label, hpMax, ownerCharacterId) => {
     try {
-      setBoard(await createBoardToken(campaignId, { label, hp_max: hpMax }));
+      setBoard(await createBoardToken(campaignId, { label, hp_max: hpMax, owner_character_id: ownerCharacterId }));
     } catch (error) {
       toast.error(error.message);
     }
@@ -313,7 +314,11 @@ export default function Board() {
             onBackgroundClick={() => setSelectedTokenId(null)}
           />
           <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
-            {selectedToken?.character_id && <CharacterSummaryCard entry={selectedToken} />}
+            {selectedToken?.character_id ? (
+              <CharacterSummaryCard entry={selectedToken} />
+            ) : selectedToken?.hp_max != null ? (
+              <CreatureSummaryCard entry={selectedToken} />
+            ) : null}
             <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
               <NotesPanel campaignId={campaignId} />
             </div>

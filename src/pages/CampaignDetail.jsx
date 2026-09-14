@@ -513,7 +513,8 @@ function ScenarioItem({
   const handleToggleGrid = () => applyOrToast(updateScenario(scenario.id, { grid_visible: !(scenario.grid_visible ?? false) }));
   const handleTokenSize = (delta) => applyOrToast(updateScenario(scenario.id, { token_size_delta: delta }));
 
-  const handleAddToken = (label, hpMax) => applyOrToast(createScenarioToken(scenario.id, { label, hp_max: hpMax }));
+  const handleAddToken = (label, hpMax, ownerCharacterId) =>
+    applyOrToast(createScenarioToken(scenario.id, { label, hp_max: hpMax, owner_character_id: ownerCharacterId }));
   const handleTokenHpChange = (tokenId, delta) => applyOrFallback(updateScenarioToken(tokenId, { hp_delta: delta }));
   const handleAddCharacterToken = (character) =>
     applyOrToast(createScenarioToken(scenario.id, { label: character.name, character_id: character.id }));

@@ -223,6 +223,31 @@ function HudCard({ entry, tone, selected, onClick }) {
   );
 }
 
+// A creature pawn's own bar, nested under its owner's HudCard — smaller and offset to read as
+// "belongs to the card above" rather than a peer entry. Only the PV bar, not a full HudCard:
+// the richer stats (DEF/attack, both owner-derived) live in CreatureSummaryCard once selected,
+// this is just the at-a-glance life gauge next to the owner it's fighting alongside.
+function CreatureHudChip({ entry, selected, onClick, offsetClassName = 'ml-3 sm:ml-4' }) {
+  return (
+    <div
+      onClick={onClick}
+      className={`${offsetClassName} flex items-center gap-1 pl-1.5 pr-2 py-0.5 rounded-lg border-l-[3px] bg-black/45 backdrop-blur-sm text-white shadow ${
+        onClick ? 'pointer-events-auto cursor-pointer' : ''
+      } ${selected ? 'ring-2 ring-white' : ''}`}
+      style={{ borderLeftColor: entry.color || '#8a8a8a' }}
+    >
+      <span className="text-[10px] sm:text-xs leading-none">🗿</span>
+      <span className="text-[9px] sm:text-[10px] truncate max-w-[4rem] sm:max-w-[6rem]" title={entry.label}>
+        {entry.label}
+      </span>
+      <StatBar
+        label="PV" current={entry.hp_current} max={entry.hp_max} kind="pv"
+        barClassName="w-14 h-3 sm:w-20 sm:h-3.5" textClassName="text-[8px] sm:text-[9px]"
+      />
+    </div>
+  );
+}
+
 // The camera is a square window (in %, always camera_width tall too — see the schema comment
 // in board.js: the scene and the projector output share the same 16:9 ratio, so a window w%
 // wide is exactly w% tall, no BOARD_ASPECT_RATIO correction needed like board_zones' shapes).
@@ -394,6 +419,16 @@ export default function BoardCanvas({
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
 
+  // Creature pawns (hp_max set) tied to an owner — nested right under that owner's HudCard
+  // instead of their own top-level entry, so a golem reads as "belongs to this character"
+  // rather than a peer combatant in the corner HUD.
+  const creaturesByOwner = {};
+  for (const t of board.tokens) {
+    if (t.hp_max != null && t.owner_character_id != null) {
+      (creaturesByOwner[t.owner_character_id] ??= []).push(t);
+    }
+  }
+
   return (
     <div onClick={onBackgroundClick} className={`overflow-hidden ${className}`} style={style}>
       <div
@@ -465,25 +500,45 @@ export default function BoardCanvas({
       {hudPlayers?.length > 0 && (
         <div className="absolute top-2 left-2 bottom-2 z-40 flex flex-col flex-wrap content-start items-start gap-1.5 pointer-events-none">
           {hudPlayers.map((entry) => (
-            <HudCard
-              key={entry.id}
-              entry={entry}
-              selected={selectedToken?.id === entry.id}
-              onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
-            />
+            <div key={entry.id} className="flex flex-col gap-1">
+              <HudCard
+                entry={entry}
+                selected={selectedToken?.id === entry.id}
+                onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
+              />
+              {creaturesByOwner[entry.character_id]?.map((creature) => (
+                <CreatureHudChip
+                  key={creature.id}
+                  entry={creature}
+                  selected={selectedToken?.id === creature.id}
+                  onClick={(e) => { e.stopPropagation(); onSelectToken(creature); }}
+                  offsetClassName="ml-3 sm:ml-4"
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}
       {hudEnemies?.length > 0 && (
         <div className="absolute top-2 right-2 bottom-2 z-40 flex flex-col flex-wrap-reverse content-start items-end gap-1.5 pointer-events-none">
           {hudEnemies.map((entry) => (
-            <HudCard
-              key={entry.id}
-              entry={entry}
-              tone="enemy"
-              selected={selectedToken?.id === entry.id}
-              onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
-            />
+            <div key={entry.id} className="flex flex-col gap-1 items-end">
+              <HudCard
+                entry={entry}
+                tone="enemy"
+                selected={selectedToken?.id === entry.id}
+                onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
+              />
+              {creaturesByOwner[entry.character_id]?.map((creature) => (
+                <CreatureHudChip
+                  key={creature.id}
+                  entry={creature}
+                  selected={selectedToken?.id === creature.id}
+                  onClick={(e) => { e.stopPropagation(); onSelectToken(creature); }}
+                  offsetClassName="mr-3 sm:mr-4"
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}

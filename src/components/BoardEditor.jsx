@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import BoardCanvas from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
+import CreatureSummaryCard from './CreatureSummaryCard';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
@@ -41,6 +42,7 @@ export default function BoardEditor({
   const [showLibrary, setShowLibrary] = useState(false);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [newTokenHp, setNewTokenHp] = useState('');
+  const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
   const [uploadingBg, setUploadingBg] = useState(false);
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
@@ -56,6 +58,7 @@ export default function BoardEditor({
   const handleAddGolem = (character) => {
     setNewTokenLabel(`Golem de ${character.name}`);
     setNewTokenHp(String(character.level * 5));
+    setNewTokenOwnerId(character.id);
   };
 
   const handleBackgroundUpload = async (e) => {
@@ -78,9 +81,10 @@ export default function BoardEditor({
   const handleAddToken = (e) => {
     e.preventDefault();
     if (!newTokenLabel.trim()) return;
-    onAddToken(newTokenLabel.trim(), newTokenHp ? Number(newTokenHp) : undefined);
+    onAddToken(newTokenLabel.trim(), newTokenHp ? Number(newTokenHp) : undefined, newTokenOwnerId);
     setNewTokenLabel('');
     setNewTokenHp('');
+    setNewTokenOwnerId(null);
   };
 
   // hp_delta applies server-side atomically (see board.js's PATCH /board/tokens/:tokenId) —
@@ -170,7 +174,7 @@ export default function BoardEditor({
             type="text"
             placeholder="Nom du pion"
             value={newTokenLabel}
-            onChange={(e) => setNewTokenLabel(e.target.value)}
+            onChange={(e) => { setNewTokenLabel(e.target.value); setNewTokenOwnerId(null); }}
             className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
           />
           <input
@@ -318,6 +322,8 @@ export default function BoardEditor({
             <>
               {selectedToken.character_id ? (
                 <CharacterSummaryCard entry={selectedToken} />
+              ) : selectedToken.hp_max != null ? (
+                <CreatureSummaryCard entry={selectedToken} />
               ) : (
                 <h3 className="font-semibold">{selectedToken.label}</h3>
               )}
