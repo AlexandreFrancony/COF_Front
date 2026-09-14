@@ -44,6 +44,11 @@ export default function BoardEditor({
   const [uploadingBg, setUploadingBg] = useState(false);
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
+  // The "Golem" capacité (which grants the actual construct, p.176 rules_capacites) only
+  // unlocks at rang 2 of the voie — rang 1 ("Grosse tête") has nothing to summon yet.
+  const golemCharacters = characters.filter((c) => c.golem_rang >= 2);
+
+  const handleAddGolem = (character) => onAddToken(`Golem de ${character.name}`, character.level * 5);
 
   const handleBackgroundUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -183,6 +188,21 @@ export default function BoardEditor({
                 className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
               >
                 + {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {golemCharacters.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {golemCharacters.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => handleAddGolem(c)}
+                title={`Ajoute un pion-créature "Golem de ${c.name}" avec ${c.level * 5} PV (niveau × 5)`}
+                className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
+              >
+                + 🗿 Golem ({c.name})
               </button>
             ))}
           </div>
