@@ -55,7 +55,7 @@ function usePositionDrag(enabled, x, y, onDragEnd) {
 // itself has none, and finally to that character's avatar_emoji as a lightweight substitute —
 // rendered as text since there's no image to use as a CSS background-image. Plain color/no
 // avatar at all is the last resort (unchanged from before avatars existed).
-function resolveAvatar(entry) {
+export function resolveAvatar(entry) {
   const imageUrl = entry.image_url || entry.character_avatar_url || null;
   const emoji = !imageUrl ? entry.character_avatar_emoji || null : null;
   return { imageUrl, emoji };
@@ -79,9 +79,9 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
       onPointerDown={handlePointerDown}
       onClick={(e) => {
         e.stopPropagation();
-        isGm && onSelect(token);
+        onSelect(token);
       }}
-      className={`absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 z-10 ${isGm ? 'cursor-move' : ''}`}
+      className={`absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 z-10 ${isGm ? 'cursor-move' : 'cursor-pointer'}`}
       style={{ left: `${token.x}%`, top: `${token.y}%` }}
     >
       <div
@@ -145,10 +145,16 @@ function zoneShapeStyle(zone) {
 // is only ~340px wide at 16:9) then grown at sm: for the GM's own desktop-sized canvas, where
 // the extra room is free. Without this, a couple of stacked cards ate most of a phone-sized
 // board and buried the pawns underneath them.
-function StatBar({ label, current, max, kind = 'pv' }) {
+// barClassName/textClassName default to the tiny HUD-card sizing but are overridable — the
+// board's own summary card (CharacterSummaryCard.jsx) reuses this exact same bar, just bigger,
+// rather than re-deriving the same color/K.O. logic a second time.
+export function StatBar({
+  label, current, max, kind = 'pv',
+  barClassName = 'w-20 h-3.5 sm:w-28 sm:h-4', textClassName = 'text-[9px] sm:text-[10px]',
+}) {
   if (max == null) {
     return (
-      <div className="flex items-center justify-between gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] leading-none">
+      <div className={`flex items-center justify-between gap-1.5 sm:gap-2 ${textClassName} leading-none`}>
         <span className="opacity-70">{label}</span>
         <span className="font-semibold">{current}</span>
       </div>
@@ -166,12 +172,12 @@ function StatBar({ label, current, max, kind = 'pv' }) {
   else barColor = pct >= 60 ? 'bg-emerald-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
-    <div className={`relative w-20 h-3.5 sm:w-28 sm:h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
+    <div className={`relative ${barClassName} rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
       <div
         className={`absolute inset-y-0 left-0 transition-[width,background-color] duration-300 ease-out ${barColor}`}
         style={{ width: isDown ? '100%' : `${pct}%` }}
       />
-      <div className="absolute inset-0 flex items-center justify-between px-1 sm:px-1.5 text-[9px] sm:text-[10px] font-semibold text-white drop-shadow">
+      <div className={`absolute inset-0 flex items-center justify-between px-1 sm:px-1.5 ${textClassName} font-semibold text-white drop-shadow`}>
         <span>{label}</span>
         <span>{isDown ? 'K.O.' : `${current}/${max}`}</span>
       </div>
@@ -353,8 +359,11 @@ function cameraCropStyle(board) {
  * Renders the board surface: background (image or looping muted video), optional grid
  * overlay, zones, tokens, and two corner HUD overlays (hudPlayers top-left, hudEnemies
  * top-right — each entry is a token enriched with its linked character's live stats).
- * isGm enables drag/select on tokens and zones; pass onSelectToken/onSelectZone as no-ops
- * (or omit) for a read-only view like the projector page. hudEnemies must never be passed
+ * isGm enables drag on tokens and zones, and select on zones; token selection (pawn or its HUD
+ * card) always works regardless of isGm — a read-only viewer can still click a character to
+ * open its summary card (see CharacterSummaryCard.jsx), same data already in its own HUD, just
+ * bigger. Pass onSelectToken/onSelectZone as no-ops (or omit) for a view with no side panel to
+ * react to a selection, like the projector page. hudEnemies must never be passed
  * on a player-facing view (e.g. the projector) — the backend already strips a PNJ token's
  * stats for a player-role fetch, but the projector reuses the GM's own session, so it's the
  * caller's job to simply not forward enemy data there.
@@ -460,7 +469,7 @@ export default function BoardCanvas({
               key={entry.id}
               entry={entry}
               selected={selectedToken?.id === entry.id}
-              onClick={isGm ? (e) => { e.stopPropagation(); onSelectToken(entry); } : undefined}
+              onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
             />
           ))}
         </div>
@@ -473,7 +482,7 @@ export default function BoardCanvas({
               entry={entry}
               tone="enemy"
               selected={selectedToken?.id === entry.id}
-              onClick={isGm ? (e) => { e.stopPropagation(); onSelectToken(entry); } : undefined}
+              onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
             />
           ))}
         </div>

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import BoardCanvas from '../components/BoardCanvas';
 import BoardEditor from '../components/BoardEditor';
 import NotesPanel from '../components/NotesPanel';
+import CharacterSummaryCard from '../components/CharacterSummaryCard';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
@@ -19,6 +20,9 @@ export default function Board() {
   const [board, setBoard] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [mediaLibrary, setMediaLibrary] = useState([]);
+  // id only (not the token object) — re-derived from the live `board` below so the card keeps
+  // reflecting PV/PM as they change via SSE instead of freezing at the moment it was clicked.
+  const [selectedTokenId, setSelectedTokenId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -239,6 +243,9 @@ export default function Board() {
   // stats for a player-role fetch, this is the second layer that keeps them off-screen.
   const hudPlayers = board.tokens.filter((t) => t.character_id && !t.is_npc);
   const hudEnemies = isGm ? board.tokens.filter((t) => t.character_id && t.is_npc) : null;
+  // Re-derived from the live board (not stored as the clicked object) so the player-side
+  // summary card keeps tracking PV/PM as they change via SSE instead of freezing on selection.
+  const selectedToken = board.tokens.find((t) => t.id === selectedTokenId) || null;
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -301,9 +308,15 @@ export default function Board() {
             className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
             style={{ aspectRatio: '16 / 9' }}
             hudPlayers={hudPlayers}
+            selectedToken={selectedToken}
+            onSelectToken={(token) => setSelectedTokenId(token.id)}
+            onBackgroundClick={() => setSelectedTokenId(null)}
           />
-          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
-            <NotesPanel campaignId={campaignId} />
+          <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
+            {selectedToken?.character_id && <CharacterSummaryCard entry={selectedToken} />}
+            <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
+              <NotesPanel campaignId={campaignId} />
+            </div>
           </div>
         </div>
       )}

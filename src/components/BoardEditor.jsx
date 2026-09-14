@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import BoardCanvas from './BoardCanvas';
+import CharacterSummaryCard from './CharacterSummaryCard';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
@@ -287,7 +288,11 @@ export default function BoardEditor({
             </>
           ) : selectedToken ? (
             <>
-              <h3 className="font-semibold">{selectedToken.label}</h3>
+              {selectedToken.character_id ? (
+                <CharacterSummaryCard entry={selectedToken} />
+              ) : (
+                <h3 className="font-semibold">{selectedToken.label}</h3>
+              )}
 
               {selectedToken.hp_max != null && (
                 <div className="flex items-center justify-between text-sm">
