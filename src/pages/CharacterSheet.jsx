@@ -1493,6 +1493,7 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
   // nested under whichever of the character's own capacités granted the pick.
   const [addVoieOnlyCapId, setAddVoieOnlyCapId] = useState('');
   const [addVoieNestUnderId, setAddVoieNestUnderId] = useState('');
+  const voieRangSaveTimers = useRef({});
 
   const [form, setForm] = useState({
     profil_id: character.profil_id,
@@ -1545,6 +1546,19 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
     } finally {
       setBusy(false);
     }
+  };
+
+  // Same fix as EquipementCard's currency fields: the rang input's native spin arrows change
+  // the value without blurring it, so a save-on-blur-only handler could silently never fire.
+  const handleVoieRangChange = (voieId, currentRang, rang) => {
+    clearTimeout(voieRangSaveTimers.current[voieId]);
+    if (rang === currentRang) return;
+    voieRangSaveTimers.current[voieId] = setTimeout(() => changeVoieRang(voieId, rang), 800);
+  };
+
+  const handleVoieRangBlur = (voieId, currentRang, rang) => {
+    clearTimeout(voieRangSaveTimers.current[voieId]);
+    if (rang !== currentRang) changeVoieRang(voieId, rang);
   };
 
   const handleAddVoie = async () => {
@@ -1707,10 +1721,8 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
                   type="number"
                   defaultValue={v.rang}
                   min={0}
-                  onBlur={(e) => {
-                    const rang = Number(e.target.value);
-                    if (rang !== v.rang) changeVoieRang(v.voie_id, rang);
-                  }}
+                  onChange={(e) => handleVoieRangChange(v.voie_id, v.rang, Number(e.target.value))}
+                  onBlur={(e) => handleVoieRangBlur(v.voie_id, v.rang, Number(e.target.value))}
                   disabled={busy}
                   className="w-16 px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)] text-center"
                 />
@@ -2020,6 +2032,7 @@ const MONNAIE_FIELDS = [
 function EquipementCard({ character, onRefresh }) {
   const [editingList, setEditingList] = useState(false);
   const [listText, setListText] = useState((character.equipement || []).join(', '));
+  const monnaieSaveTimers = useRef({});
 
   const saveMonnaie = async (field, value) => {
     try {
@@ -2028,6 +2041,20 @@ function EquipementCard({ character, onRefresh }) {
     } catch (err) {
       toast.error(err.message);
     }
+  };
+
+  // A number input's native spin arrows change the value without ever blurring the field, so
+  // a save-on-blur-only handler silently never fires until the user happens to click elsewhere
+  // afterward — debounce on every change instead (same pattern as NotesPanel's autosave),
+  // with blur still flushing immediately for the common case of tabbing/clicking away.
+  const handleMonnaieChange = (field, value) => {
+    clearTimeout(monnaieSaveTimers.current[field]);
+    monnaieSaveTimers.current[field] = setTimeout(() => saveMonnaie(field, value), 800);
+  };
+
+  const handleMonnaieBlur = (field, value) => {
+    clearTimeout(monnaieSaveTimers.current[field]);
+    saveMonnaie(field, value);
   };
 
   const saveList = async () => {
@@ -2051,7 +2078,8 @@ function EquipementCard({ character, onRefresh }) {
               type="number"
               min={0}
               defaultValue={character[field] || 0}
-              onBlur={(e) => saveMonnaie(field, e.target.value)}
+              onChange={(e) => handleMonnaieChange(field, e.target.value)}
+              onBlur={(e) => handleMonnaieBlur(field, e.target.value)}
               className="w-full px-1 py-1 text-center rounded bg-[var(--bg-input)] border border-[var(--border)]"
             />
           </label>
