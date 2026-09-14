@@ -1892,7 +1892,7 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
             value={character.armure_id || ''}
             onChange={(e) => handleSelect('armure_id', e.target.value)}
             disabled={busy}
-            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           >
             <option value="">Aucune</option>
             {armorOptions.map((a) => (
@@ -1906,7 +1906,7 @@ function ArmureSelector({ character, armures, isGm, onArmuresChange, onRefresh }
             value={character.bouclier_id || ''}
             onChange={(e) => handleSelect('bouclier_id', e.target.value)}
             disabled={busy}
-            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           >
             <option value="">Aucun</option>
             {shieldOptions.map((a) => (
@@ -2208,7 +2208,7 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
             value={character.arme_principale_id || ''}
             onChange={(e) => handleSelect('arme_principale_id', e.target.value)}
             disabled={busy}
-            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           >
             <option value="">Aucune</option>
             <optgroup label="Contact">
@@ -2229,7 +2229,7 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
             value={character.arme_secondaire_id || ''}
             onChange={(e) => handleSelect('arme_secondaire_id', e.target.value)}
             disabled={busy}
-            className="px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+            className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
           >
             <option value="">Aucune</option>
             <optgroup label="Contact">
@@ -2406,17 +2406,17 @@ function StatAdjuster({ label, current, max, onChange, koLabel = true, suffix = 
           <button
             onClick={() => adjust(-1)}
             disabled={busy || current <= 0}
-            className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0"
+            className="w-9 h-9 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0 text-lg"
           >
             −
           </button>
-          <span className={`cof-display font-bold text-lg text-center ${suffix ? 'w-20' : 'w-14'} ${isDown ? 'text-red-500' : ''}`}>
+          <span className={`cof-display font-bold text-base text-center flex-1 min-w-0 ${isDown ? 'text-red-500' : ''}`}>
             {isDown ? 'K.O.' : `${current}/${max}${suffix}`}
           </span>
           <button
             onClick={() => adjust(1)}
             disabled={busy || current >= max}
-            className="w-6 h-6 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0"
+            className="w-9 h-9 rounded-full border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-30 leading-none shrink-0 text-lg"
           >
             +
           </button>
