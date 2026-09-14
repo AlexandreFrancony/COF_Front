@@ -38,7 +38,7 @@ export default function Login() {
         onSubmit={handleSubmit}
         className="cof-plate w-full max-w-sm p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-4"
       >
-        <h1 className="text-2xl font-bold text-[var(--accent)] text-center">COF — Connexion</h1>
+        <h1 className="text-2xl font-bold text-[var(--accent)] text-center">As I've Written</h1>
 
         <input
           type="email"

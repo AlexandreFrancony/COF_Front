@@ -55,6 +55,12 @@ export const changePassword = (currentPassword, newPassword) =>
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 
+export const changeDisplayName = (displayName) =>
+  request('/auth/display-name', {
+    method: 'PATCH',
+    body: JSON.stringify({ display_name: displayName }),
+  });
+
 export const forgotPassword = (email) =>
   request('/auth/forgot-password', {
     method: 'POST',

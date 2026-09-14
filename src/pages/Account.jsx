@@ -2,17 +2,23 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { changePassword, discordLinkInit } from '../utils/api';
+import { changePassword, changeDisplayName, discordLinkInit } from '../utils/api';
 import { getDiscordMessage } from '../utils/discordErrors';
 import DiscordButton from '../components/DiscordButton';
 
 export default function Account() {
-  const { user } = useAuth();
+  const { user, loginWithToken } = useAuth();
   const [searchParams] = useSearchParams();
+  const [displayName, setDisplayName] = useState(user?.display_name || '');
+  const [savingName, setSavingName] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDisplayName(user?.display_name || '');
+  }, [user?.display_name]);
 
   useEffect(() => {
     const code = searchParams.get('discord');
@@ -21,6 +27,22 @@ export default function Account() {
     if (code === 'linked') toast.success(message);
     else toast.error(message);
   }, [searchParams]);
+
+  const handleSaveName = async (e) => {
+    e.preventDefault();
+    const trimmed = displayName.trim();
+    if (!trimmed || trimmed === user?.display_name) return;
+    setSavingName(true);
+    try {
+      const { token } = await changeDisplayName(trimmed);
+      await loginWithToken(token);
+      toast.success('Nom mis à jour');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,6 +73,28 @@ export default function Account() {
             {user?.display_name} — {user?.email}
           </p>
         </div>
+
+        <form
+          onSubmit={handleSaveName}
+          className="cof-plate p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3"
+        >
+          <h2 className="font-semibold">Nom affiché</h2>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+            maxLength={100}
+            className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-primary)]"
+          />
+          <button
+            type="submit"
+            disabled={savingName || !displayName.trim() || displayName.trim() === user?.display_name}
+            className="self-start px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+          >
+            {savingName ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+        </form>
 
         <form
           onSubmit={handleSubmit}
