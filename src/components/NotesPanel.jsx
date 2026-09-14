@@ -7,8 +7,9 @@ const SAVE_DEBOUNCE_MS = 800;
 // A single shared scratchpad per campaign — GM and every player with a character in it can
 // write to the same document, live, during a session (NPC names, clues, decisions...).
 // Last-write-wins: simple on purpose, this isn't a real-time collaborative editor. The one
-// concession to not clobbering someone mid-sentence is skipping incoming SSE updates while
-// the local textarea is focused — they land as soon as it loses focus instead.
+// concession to not clobbering someone mid-sentence: an incoming SSE update never overwrites
+// the textarea while it's focused — it's held and applied on blur instead (unless the user
+// made their own edit meanwhile, which wins and gets saved instead of the held update).
 export default function NotesPanel({ campaignId }) {
   const [content, setContent] = useState('');
   const [meta, setMeta] = useState({ updated_at: null, updated_by: null });
@@ -17,6 +18,9 @@ export default function NotesPanel({ campaignId }) {
   const focusedRef = useRef(false);
   const saveTimerRef = useRef(null);
   const pendingContentRef = useRef(null);
+  // A remote save that arrived while focused isn't dropped — it's held here and applied on
+  // blur (unless the user made their own edit meanwhile, which wins instead).
+  const heldRemoteContentRef = useRef(null);
 
   const flushSave = async (value) => {
     clearTimeout(saveTimerRef.current);
@@ -42,7 +46,12 @@ export default function NotesPanel({ campaignId }) {
 
   const handleBlur = () => {
     focusedRef.current = false;
-    if (pendingContentRef.current !== null) flushSave(pendingContentRef.current);
+    if (pendingContentRef.current !== null) {
+      flushSave(pendingContentRef.current);
+    } else if (heldRemoteContentRef.current !== null) {
+      setContent(heldRemoteContentRef.current);
+      heldRemoteContentRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -60,8 +69,13 @@ export default function NotesPanel({ campaignId }) {
     source.addEventListener('notes', (e) => {
       const data = JSON.parse(e.data);
       setMeta({ updated_at: data.updated_at, updated_by: data.updated_by });
-      // Someone else's save — never overwrite the local draft while it's mid-edit.
-      if (!focusedRef.current) setContent(data.content);
+      // Someone else's save — never overwrite the local draft while it's mid-edit; hold it
+      // for handleBlur to apply instead of dropping it silently.
+      if (focusedRef.current) {
+        heldRemoteContentRef.current = data.content;
+      } else {
+        setContent(data.content);
+      }
     });
 
     return () => {
