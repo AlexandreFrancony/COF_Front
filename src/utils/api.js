@@ -17,7 +17,11 @@ async function request(endpoint, options = {}) {
 
   const response = await fetch(url, config);
 
-  if (response.status === 401) {
+  // A 401 with no token attached means the request was never authenticated in the first
+  // place (e.g. a wrong password on /auth/login) — that's an auth failure, not an expired
+  // session, so let it fall through to the generic handler below and surface the backend's
+  // real message ("Identifiants incorrects") instead of a misleading "session expired".
+  if (response.status === 401 && token) {
     clearToken();
     throw new Error('Session expirée, veuillez vous reconnecter');
   }
