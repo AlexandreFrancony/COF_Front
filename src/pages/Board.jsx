@@ -92,9 +92,9 @@ export default function Board() {
     }
   };
 
-  const handleAddToken = async (label) => {
+  const handleAddToken = async (label, hpMax) => {
     try {
-      setBoard(await createBoardToken(campaignId, { label }));
+      setBoard(await createBoardToken(campaignId, { label, hp_max: hpMax }));
     } catch (error) {
       toast.error(error.message);
     }
@@ -129,6 +129,17 @@ export default function Board() {
       setBoard(await deleteBoardToken(token.id));
     } catch (error) {
       toast.error(error.message);
+    }
+  };
+
+  const handleTokenHpChange = async (tokenId, delta) => {
+    try {
+      const updated = await updateBoardToken(tokenId, { hp_delta: delta });
+      setBoard(updated);
+      return updated;
+    } catch (error) {
+      toast.error(error.message);
+      return board;
     }
   };
 
@@ -264,6 +275,7 @@ export default function Board() {
           onToggleTokenVisible={handleToggleTokenVisible}
           onDeleteToken={handleDeleteToken}
           onUploadTokenImage={handleTokenImageUpload}
+          onTokenHpChange={handleTokenHpChange}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}

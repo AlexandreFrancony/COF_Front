@@ -61,9 +61,17 @@ function resolveAvatar(entry) {
   return { imageUrl, emoji };
 }
 
+// hp_max set (non-null) marks a "creature pawn" — a GM-controlled construct/summon (e.g. a
+// golem) that isn't a full character: no profil/voies/HUD card, just a life bar drawn right
+// under its avatar. At 0 PV it's greyed out rather than removed — the GM decides when to
+// actually take it off the board, same as a PNJ character token at 0 PV today.
 function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
   const { ref, handlePointerDown } = usePositionDrag(isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y));
   const { imageUrl, emoji } = resolveAvatar(token);
+  const hasHp = token.hp_max != null;
+  const destroyed = hasHp && token.hp_current <= 0;
+  const hpPct = hasHp && token.hp_max > 0 ? Math.max(0, Math.min(100, (token.hp_current / token.hp_max) * 100)) : 0;
+  const hpColor = hpPct >= 60 ? 'bg-emerald-500' : hpPct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
     <div
@@ -79,7 +87,7 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
       <div
         className={`rounded-full border-2 shadow-lg bg-cover bg-center shrink-0 flex items-center justify-center ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
-        } ${isGm && !token.visible_to_players ? 'opacity-40' : ''}`}
+        } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''}`}
         style={{
           width: size, height: size,
           backgroundColor: token.color,
@@ -88,6 +96,14 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
       >
         {emoji && <span style={{ fontSize: size * 0.55, lineHeight: 1 }}>{emoji}</span>}
       </div>
+      {hasHp && (
+        <div className="mt-0.5 h-1.5 rounded-full bg-black/50 overflow-hidden shrink-0" style={{ width: size * 0.8 }}>
+          <div
+            className={`h-full transition-[width,background-color] duration-300 ease-out ${destroyed ? 'bg-red-700' : hpColor}`}
+            style={{ width: destroyed ? '100%' : `${hpPct}%` }}
+          />
+        </div>
+      )}
       <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
         {token.label}
       </span>

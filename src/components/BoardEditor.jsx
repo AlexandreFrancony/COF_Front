@@ -29,6 +29,7 @@ export default function BoardEditor({
   mediaLibrary = [], onUploadBackground, onPickBackground, onDeleteMedia,
   onToggleGrid, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
+  onTokenHpChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
   hudPlayers = null, hudEnemies = null,
@@ -38,6 +39,7 @@ export default function BoardEditor({
   const [cameraSelected, setCameraSelected] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [newTokenLabel, setNewTokenLabel] = useState('');
+  const [newTokenHp, setNewTokenHp] = useState('');
   const [uploadingBg, setUploadingBg] = useState(false);
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
@@ -62,8 +64,17 @@ export default function BoardEditor({
   const handleAddToken = (e) => {
     e.preventDefault();
     if (!newTokenLabel.trim()) return;
-    onAddToken(newTokenLabel.trim());
+    onAddToken(newTokenLabel.trim(), newTokenHp ? Number(newTokenHp) : undefined);
     setNewTokenLabel('');
+    setNewTokenHp('');
+  };
+
+  // hp_delta applies server-side atomically (see board.js's PATCH /board/tokens/:tokenId) —
+  // selectedToken is re-synced from the response (not left stale) so repeated +/- clicks read
+  // the actual persisted value, same pattern as the zone panel's own handlePatchZone.
+  const handleTokenHp = async (delta) => {
+    const updated = await onTokenHpChange(selectedToken.id, delta);
+    setSelectedToken(updated.tokens.find((t) => t.id === selectedToken.id) || null);
   };
 
   const handleToggleTokenVisible = (token) => {
@@ -147,6 +158,15 @@ export default function BoardEditor({
             value={newTokenLabel}
             onChange={(e) => setNewTokenLabel(e.target.value)}
             className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+          />
+          <input
+            type="number"
+            min="1"
+            placeholder="PV (optionnel)"
+            title="Pour un pion-créature (golem, familier...) avec sa propre barre de vie"
+            value={newTokenHp}
+            onChange={(e) => setNewTokenHp(e.target.value)}
+            className="w-28 px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
           />
           <button type="submit" className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]">
             Ajouter un pion
@@ -268,6 +288,16 @@ export default function BoardEditor({
           ) : selectedToken ? (
             <>
               <h3 className="font-semibold">{selectedToken.label}</h3>
+
+              {selectedToken.hp_max != null && (
+                <div className="flex items-center justify-between text-sm">
+                  <span>PV {selectedToken.hp_current}/{selectedToken.hp_max}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleTokenHp(-1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                    <button onClick={() => handleTokenHp(1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                  </div>
+                </div>
+              )}
 
               <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">
                 Image du pion
