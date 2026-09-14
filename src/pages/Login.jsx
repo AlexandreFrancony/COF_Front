@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
@@ -55,6 +55,10 @@ export default function Login() {
         >
           {submitting ? 'Connexion...' : 'Se connecter'}
         </button>
+
+        <Link to="/forgot-password" className="text-sm text-center text-[var(--text-secondary)] hover:text-[var(--accent)]">
+          Mot de passe oublié ?
+        </Link>
       </form>
     </div>
   );

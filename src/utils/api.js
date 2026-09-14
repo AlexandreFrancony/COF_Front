@@ -55,6 +55,18 @@ export const changePassword = (currentPassword, newPassword) =>
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 
+export const forgotPassword = (email) =>
+  request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+
+export const resetPassword = (token, password) =>
+  request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  });
+
 // ============================================================================
 // CAMPAIGNS
 // ============================================================================

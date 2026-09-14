@@ -11,6 +11,8 @@ import BoardProjector from './pages/BoardProjector';
 import History from './pages/History';
 import GlossaireVoies from './pages/GlossaireVoies';
 import Account from './pages/Account';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -61,6 +63,8 @@ function AppRoutes() {
         }
       />
       <Route path="/invites/:token" element={<InviteAccept />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/campaigns"
         element={
