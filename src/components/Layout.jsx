@@ -26,7 +26,9 @@ export default function Layout({ children }) {
             >
               📖 Glossaire
             </a>
-            <span className="text-[var(--text-secondary)]">{user?.display_name}</span>
+            <Link to="/compte" className="text-[var(--text-secondary)] hover:text-[var(--accent)]">
+              {user?.display_name}
+            </Link>
             <button onClick={logout} className="text-[var(--accent)] hover:underline">
               Déconnexion
             </button>

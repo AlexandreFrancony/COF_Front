@@ -10,6 +10,7 @@ import Board from './pages/Board';
 import BoardProjector from './pages/BoardProjector';
 import History from './pages/History';
 import GlossaireVoies from './pages/GlossaireVoies';
+import Account from './pages/Account';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -113,6 +114,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <GlossaireVoies />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/compte"
+        element={
+          <ProtectedRoute>
+            <Account />
           </ProtectedRoute>
         }
       />

@@ -17,11 +17,13 @@ async function request(endpoint, options = {}) {
 
   const response = await fetch(url, config);
 
-  // A 401 with no token attached means the request was never authenticated in the first
-  // place (e.g. a wrong password on /auth/login) — that's an auth failure, not an expired
-  // session, so let it fall through to the generic handler below and surface the backend's
-  // real message ("Identifiants incorrects") instead of a misleading "session expired".
-  if (response.status === 401 && token) {
+  // A 401 usually means the token itself is missing/invalid/expired — except on /auth/login
+  // (no token sent yet: a wrong password) and /auth/password (token is fine, but the
+  // *current* password supplied in the body was wrong) — both are input errors, not an
+  // expired session, so they fall through to the generic handler and surface the backend's
+  // real message instead of a misleading "session expired".
+  const isAuthInputCheck = endpoint === '/auth/login' || endpoint === '/auth/password';
+  if (response.status === 401 && token && !isAuthInputCheck) {
     clearToken();
     throw new Error('Session expirée, veuillez vous reconnecter');
   }
@@ -46,6 +48,12 @@ export const login = (credentials) =>
   });
 
 export const getMe = () => request('/auth/me');
+
+export const changePassword = (currentPassword, newPassword) =>
+  request('/auth/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
 
 // ============================================================================
 // CAMPAIGNS
