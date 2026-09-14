@@ -236,6 +236,7 @@ export default function CharacterSheet() {
   const [mageBonusVoieId, setMageBonusVoieId] = useState(null);
   const [hybridCreation, setHybridCreation] = useState(false);
   const [allProfilVoies, setAllProfilVoies] = useState([]);
+  const [customVoiesForCreation, setCustomVoiesForCreation] = useState([]);
   const [hybridPickId, setHybridPickId] = useState('');
   const [origineHumaine, setOrigineHumaine] = useState('');
   const [equipement, setEquipement] = useState('');
@@ -371,8 +372,16 @@ export default function CharacterSheet() {
       // Only the GM can build a hybrid from level 1 (a deliberate exception to the normal
       // creation rules — a player's own creation always follows RAW: 2 voies from their profil).
       if (isGm) {
-        const all = await getVoies({ type: 'profil' });
+        const [all, custom] = await Promise.all([
+          getVoies({ type: 'profil' }),
+          // Homebrew voies (e.g. Augustin's Voie de transition, Ainee's 6 custom voies) used to
+          // only be pickable after creation (level-up panel) — offered here too now, in the same
+          // "voie hors profil" picker, since a character concept built around one is often known
+          // from the start rather than discovered later.
+          getVoies({ type: 'custom' }),
+        ]);
         setAllProfilVoies(all);
+        setCustomVoiesForCreation(custom);
       }
 
       setStep(4);
@@ -890,9 +899,10 @@ export default function CharacterSheet() {
                   className="mt-0.5"
                 />
                 <span>
-                  <strong>Personnage hybride dès la création</strong> — exception aux règles normales
-                  (le perso est déjà formé à un autre art au niveau 1, ex. un guerrier-mage). Permet de
-                  piocher une des 2 voies de départ dans un autre profil.
+                  <strong>Personnage hybride ou voie personnalisée dès la création</strong> — exception aux
+                  règles normales (le perso est déjà formé à un autre art au niveau 1, ex. un guerrier-mage,
+                  ou son concept repose sur une voie homebrew). Permet de piocher une des 2 voies de départ
+                  dans un autre profil ou parmi les voies personnalisées.
                 </span>
               </label>
 
@@ -905,6 +915,15 @@ export default function CharacterSheet() {
                       className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
                     >
                       <option value="">— choisir une voie hors profil —</option>
+                      {customVoiesForCreation.length > 0 && (
+                        <optgroup label="Personnalisées (homebrew)">
+                          {customVoiesForCreation.map((v) => (
+                            <option key={v.id} value={v.id} disabled={selectedVoieIds.includes(v.id)}>
+                              {v.name}{v.origine_pj ? ` — ${v.origine_pj}` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                       {profils.filter((p) => p.id !== profilId).map((op) => {
                         const voies = allProfilVoies.filter((v) => v.profil_id === op.id);
                         if (voies.length === 0) return null;
@@ -936,13 +955,14 @@ export default function CharacterSheet() {
                   {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).map((id) => {
-                        const v = allProfilVoies.find((av) => av.id === id);
+                        const v = allProfilVoies.find((av) => av.id === id) || customVoiesForCreation.find((cv) => cv.id === id);
+                        const originLabel = v?.profil_id ? profils.find((p) => p.id === v.profil_id)?.name : 'homebrew';
                         return (
                           <span
                             key={id}
                             className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--accent)] bg-[var(--bg-input)] text-xs"
                           >
-                            {v?.name} ({profils.find((p) => p.id === v?.profil_id)?.name})
+                            {v?.name} ({originLabel})
                             <button
                               type="button"
                               onClick={() => toggleVoie(id)}
@@ -1064,7 +1084,7 @@ export default function CharacterSheet() {
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedVoieIds.map((vid) => {
-                  const v = profilVoies.find((pv) => pv.id === vid) || allProfilVoies.find((pv) => pv.id === vid);
+                  const v = profilVoies.find((pv) => pv.id === vid) || allProfilVoies.find((pv) => pv.id === vid) || customVoiesForCreation.find((pv) => pv.id === vid);
                   return (
                     <button
                       key={vid}
