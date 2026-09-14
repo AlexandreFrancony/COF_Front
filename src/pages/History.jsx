@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { getCampaign, getCampaignEvents, createEvent } from '../utils/api';
+import { getCampaign, getCampaignEvents, createEvent, clearCampaignEvents } from '../utils/api';
 
 const TYPE_LABELS = {
   pv_change: 'PV', pm_change: 'PM', voie_added: 'Voie', voie_rang_up: 'Voie',
@@ -23,6 +23,7 @@ export default function History() {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const load = async () => {
     try {
@@ -59,6 +60,20 @@ export default function History() {
     }
   };
 
+  const handleClear = async () => {
+    if (events.length === 0) return;
+    if (!window.confirm("Vider tout l'historique de cette campagne ? Cette action est définitive.")) return;
+    setClearing(true);
+    try {
+      await clearCampaignEvents(campaignId);
+      setEvents([]);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   if (loading || !campaign) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
@@ -70,11 +85,23 @@ export default function History() {
   return (
     <div className="p-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-4">
-        <div>
-          <Link to={`/campaigns/${campaignId}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
-            ← {campaign.name}
-          </Link>
-          <h1 className="text-2xl font-bold text-[var(--accent)] mt-1">Historique</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Link to={`/campaigns/${campaignId}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
+              ← {campaign.name}
+            </Link>
+            <h1 className="text-2xl font-bold text-[var(--accent)] mt-1">Historique</h1>
+          </div>
+          {isGm && events.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={clearing}
+              className="shrink-0 text-xs px-2 py-1 rounded border border-red-400 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+            >
+              {clearing ? 'Suppression...' : "Vider l'historique"}
+            </button>
+          )}
         </div>
 
         {isGm && (

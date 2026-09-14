@@ -298,3 +298,5 @@ export async function uploadBoardMedia(file) {
 export const getCampaignEvents = (campaignId) => request(`/campaigns/${campaignId}/events`);
 export const createEvent = (campaignId, message) =>
   request(`/campaigns/${campaignId}/events`, { method: 'POST', body: JSON.stringify({ message }) });
+export const clearCampaignEvents = (campaignId) =>
+  request(`/campaigns/${campaignId}/events`, { method: 'DELETE' });
