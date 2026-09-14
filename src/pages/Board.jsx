@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import BoardCanvas from '../components/BoardCanvas';
 import BoardEditor from '../components/BoardEditor';
+import NotesPanel from '../components/NotesPanel';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
@@ -276,15 +277,23 @@ export default function Board() {
           hudEnemies={hudEnemies}
         />
       ) : (
-        // Read-only for players: no toolbar, no side panel, no camera frame overlay — the
-        // full scene as-is (unlike the projector, which crops to the GM's chosen window).
-        <BoardCanvas
-          board={board}
-          isGm={false}
-          className="relative rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
-          style={{ aspectRatio: '16 / 9' }}
-          hudPlayers={hudPlayers}
-        />
+        // Read-only board for players: no toolbar, no camera frame overlay — the full scene
+        // as-is (unlike the projector, which crops to the GM's chosen window). The sidebar
+        // mirrors where the GM has the camera/token/zone panel, but with the campaign's
+        // shared notes instead — handy to jot down or check during a live session without
+        // leaving the board.
+        <div className="flex flex-col lg:flex-row gap-4">
+          <BoardCanvas
+            board={board}
+            isGm={false}
+            className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+            style={{ aspectRatio: '16 / 9' }}
+            hudPlayers={hudPlayers}
+          />
+          <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
+            <NotesPanel campaignId={campaignId} />
+          </div>
+        </div>
       )}
     </div>
   );

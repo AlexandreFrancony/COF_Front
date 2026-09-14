@@ -89,7 +89,7 @@ export default function NotesPanel({ campaignId }) {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mb-2">
         <h2 className="font-semibold">Notes partagées</h2>
         <span className="text-xs text-[var(--text-secondary)]">
           {saving
