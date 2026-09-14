@@ -9,6 +9,7 @@ import {
   getArmes, createArme, deleteArme, uploadCharacterAvatar,
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
+import { HUMAN_ORIGINS } from '../utils/capaciteChoices';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
 const CARAC_LABELS = {
@@ -27,17 +28,6 @@ const CARAC_PROFILES = {
   expert: { label: 'Expert', values: [3, 2, 1, 1, 0, 0, -1] },
   specialiste: { label: 'Spécialiste', values: [4, 2, 1, 0, 0, -1, -1] },
 };
-
-// Voie de l'Humain — rang 1 "Diversité" (p.46) : origine géographique/sociale à choisir,
-// qui donne +3 à deux domaines narratifs liés (non modélisés ici) + 1 PC (calculé côté backend).
-const HUMAN_ORIGINS = [
-  'Montagnard (escalade, résistance au froid)',
-  'Citadin (commerce, résistance aux maladies)',
-  'Campagnard (météorologie, équitation)',
-  'Riverain (natation, navigation)',
-  'Sauvage (chasser, pister)',
-  'Nomade (orientation, résistance à la chaleur/au froid)',
-];
 
 // Augustin Moëdec's homebrew schizophrenia — hardcoded to these exact voie_ids (Voie des
 // artefacts=76, Voie du métal=78 for "facette calme" · Voie de la magie destructrice=82,
@@ -152,7 +142,7 @@ function CharacterAvatar({ character, onRefresh }) {
 // Mage rang 1 → Voie du Gnome's "Don étrange" → Voie de l'envoûteur's "Injonction") nests to
 // arbitrary depth, not just one level — each nested voie's own capacité may have its own
 // nestedVoiesByCapacite entry in turn.
-function NestedCapacites({ parentCapaciteId, nestedVoiesByCapacite, level, character }) {
+function NestedCapacites({ parentCapaciteId, nestedVoiesByCapacite, level, character, onRefresh }) {
   const nested = nestedVoiesByCapacite[parentCapaciteId];
   if (!nested?.length) return null;
   return nested.map((nv) => (
@@ -164,8 +154,8 @@ function NestedCapacites({ parentCapaciteId, nestedVoiesByCapacite, level, chara
             {nc.name}
             {nc.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
           </span>
-          <CapaciteSummary capacite={nc} level={level} voieId={nv.voie_id} character={character} />
-          <NestedCapacites parentCapaciteId={nc.id} nestedVoiesByCapacite={nestedVoiesByCapacite} level={level} character={character} />
+          <CapaciteSummary capacite={nc} level={level} voieId={nv.voie_id} character={character} onRefresh={onRefresh} />
+          <NestedCapacites parentCapaciteId={nc.id} nestedVoiesByCapacite={nestedVoiesByCapacite} level={level} character={character} onRefresh={onRefresh} />
         </li>
       ))}
     </ul>
@@ -632,12 +622,13 @@ export default function CharacterSheet() {
                                 {c.name}
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
-                              <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} />
+                              <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} onRefresh={refreshCharacter} />
                               <NestedCapacites
                                 parentCapaciteId={c.id}
                                 nestedVoiesByCapacite={nestedVoiesByCapacite}
                                 level={character.level}
                                 character={character}
+                                onRefresh={refreshCharacter}
                               />
                             </li>
                           ))}
