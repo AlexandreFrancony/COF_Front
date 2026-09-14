@@ -125,10 +125,14 @@ function zoneShapeStyle(zone) {
 // PV is colored by remaining-health tier (not by player/enemy — the left/right split and the
 // card's own accent border already say who's who) so it reads as a wound gauge at a glance;
 // PM gets its own distinct hue purely to be visually unmistakable from the PV row above it.
+// Sized mobile-first (a phone viewer of the read-only board is a real target, and its canvas
+// is only ~340px wide at 16:9) then grown at sm: for the GM's own desktop-sized canvas, where
+// the extra room is free. Without this, a couple of stacked cards ate most of a phone-sized
+// board and buried the pawns underneath them.
 function StatBar({ label, current, max, kind = 'pv' }) {
   if (max == null) {
     return (
-      <div className="flex items-center justify-between gap-2 text-[10px] leading-none">
+      <div className="flex items-center justify-between gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] leading-none">
         <span className="opacity-70">{label}</span>
         <span className="font-semibold">{current}</span>
       </div>
@@ -146,12 +150,12 @@ function StatBar({ label, current, max, kind = 'pv' }) {
   else barColor = pct >= 60 ? 'bg-emerald-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
-    <div className={`relative w-28 h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
+    <div className={`relative w-20 h-3.5 sm:w-28 sm:h-4 rounded bg-black/40 overflow-hidden ${isDown ? 'ring-1 ring-red-500' : ''}`}>
       <div
         className={`absolute inset-y-0 left-0 transition-[width,background-color] duration-300 ease-out ${barColor}`}
         style={{ width: isDown ? '100%' : `${pct}%` }}
       />
-      <div className="absolute inset-0 flex items-center justify-between px-1.5 text-[10px] font-semibold text-white drop-shadow">
+      <div className="absolute inset-0 flex items-center justify-between px-1 sm:px-1.5 text-[9px] sm:text-[10px] font-semibold text-white drop-shadow">
         <span>{label}</span>
         <span>{isDown ? 'K.O.' : `${current}/${max}`}</span>
       </div>
@@ -167,27 +171,27 @@ function HudCard({ entry, tone, selected, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md ${
+      className={`flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2 py-1 sm:pl-2 sm:pr-2.5 sm:py-1.5 rounded-lg border-l-[3px] sm:border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md ${
         onClick ? 'pointer-events-auto cursor-pointer' : ''
       } ${selected ? 'ring-2 ring-white' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div
-        className="w-8 h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center flex items-center justify-center"
+        className="w-6 h-6 sm:w-8 sm:h-8 shrink-0 rounded-full border border-white/50 bg-cover bg-center flex items-center justify-center"
         style={{
           backgroundColor: entry.color || '#c65d3b',
           backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
         }}
       >
-        {emoji && <span style={{ fontSize: 16, lineHeight: 1 }}>{emoji}</span>}
+        {emoji && <span style={{ fontSize: 13, lineHeight: 1 }}>{emoji}</span>}
       </div>
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-[11px] font-semibold leading-none truncate max-w-[9rem]" title={entry.character_name || entry.label}>
+        <span className="text-[10px] sm:text-[11px] font-semibold leading-none truncate max-w-[5.5rem] sm:max-w-[9rem]" title={entry.character_name || entry.label}>
           {entry.character_name || entry.label}
         </span>
         <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} kind="pv" />
         {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} kind="pm" />}
-        <div className="flex gap-2 text-[10px] opacity-80">
+        <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] opacity-80">
           <span>Chance {entry.points_chance}</span>
           <span>Déf {entry.defense}</span>
           <span>Init {entry.initiative}</span>
