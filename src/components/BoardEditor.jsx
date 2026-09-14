@@ -48,7 +48,15 @@ export default function BoardEditor({
   // unlocks at rang 2 of the voie — rang 1 ("Grosse tête") has nothing to summon yet.
   const golemCharacters = characters.filter((c) => c.golem_rang >= 2);
 
-  const handleAddGolem = (character) => onAddToken(`Golem de ${character.name}`, character.level * 5);
+  // Pre-fills the pawn form instead of creating the token directly — niveau×5 is only the base
+  // PV formula (p.176 rules_capacites); the rang-5 "Golem supérieur" upgrade "Grande taille"
+  // adds +2 PV/niveau on top, and there's no structured field anywhere for which upgrade (of
+  // 8 possible) a character picked. Landing the base value in the already-editable PV field
+  // lets the GM bump it by hand for that case instead of the button silently getting it wrong.
+  const handleAddGolem = (character) => {
+    setNewTokenLabel(`Golem de ${character.name}`);
+    setNewTokenHp(String(character.level * 5));
+  };
 
   const handleBackgroundUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -199,7 +207,7 @@ export default function BoardEditor({
               <button
                 key={c.id}
                 onClick={() => handleAddGolem(c)}
-                title={`Ajoute un pion-créature "Golem de ${c.name}" avec ${c.level * 5} PV (niveau × 5)`}
+                title={`Pré-remplit le formulaire ci-dessus avec "Golem de ${c.name}" et ${c.level * 5} PV (niveau × 5) — ajuste le nombre de PV si le golem a été amélioré (rang 5), puis clique "Ajouter un pion"`}
                 className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
               >
                 + 🗿 Golem ({c.name})
