@@ -42,7 +42,11 @@ export default function BoardEditor({
   onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
   hudPlayers = null, hudEnemies = null,
 }) {
-  const [selectedToken, setSelectedToken] = useState(null);
+  // id only (not the token object) — re-derived from the live `board` prop below so the
+  // summary panel keeps tracking PV/PM/Chance as they change (via SSE, e.g. a level-up, or a
+  // teammate's own edit) instead of freezing on whatever the object looked like at selection.
+  const [selectedTokenId, setSelectedTokenId] = useState(null);
+  const selectedToken = board.tokens.find((t) => t.id === selectedTokenId) || null;
   const [selectedZone, setSelectedZone] = useState(null);
   const [cameraSelected, setCameraSelected] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -113,21 +117,19 @@ export default function BoardEditor({
   };
 
   // hp_delta applies server-side atomically (see board.js's PATCH /board/tokens/:tokenId) —
-  // selectedToken is re-synced from the response (not left stale) so repeated +/- clicks read
-  // the actual persisted value, same pattern as the zone panel's own handlePatchZone.
-  const handleTokenHp = async (delta) => {
-    const updated = await onTokenHpChange(selectedToken.id, delta);
-    setSelectedToken(updated.tokens.find((t) => t.id === selectedToken.id) || null);
-  };
+  // selectedToken re-derives from the response once the caller's board state updates (it's now
+  // id-based, see selectedTokenId above), so repeated +/- clicks read the actual persisted value,
+  // same pattern as the zone panel's own handlePatchZone.
+  const handleTokenHp = (delta) => onTokenHpChange(selectedToken.id, delta);
 
   const handleToggleTokenVisible = (token) => {
     onToggleTokenVisible(token);
-    setSelectedToken(null);
+    setSelectedTokenId(null);
   };
 
   const handleDeleteToken = (token) => {
     onDeleteToken(token);
-    setSelectedToken(null);
+    setSelectedTokenId(null);
   };
 
   const handleAddZone = async (shape) => {
@@ -136,7 +138,7 @@ export default function BoardEditor({
     // usually sits too, so without auto-selecting it the GM has no way to grab it out from
     // under the frame (zones have no HUD card to click, unlike tokens).
     setCameraSelected(false);
-    setSelectedToken(null);
+    setSelectedTokenId(null);
     setSelectedZone(updated.zones[updated.zones.length - 1]);
   };
 
@@ -363,17 +365,17 @@ export default function BoardEditor({
           hudPlayers={hudPlayers}
           hudEnemies={hudEnemies}
           selectedToken={selectedToken}
-          onSelectToken={(token) => { setCameraSelected(false); setSelectedZone(null); setSelectedToken(token); }}
+          onSelectToken={(token) => { setCameraSelected(false); setSelectedZone(null); setSelectedTokenId(token.id); }}
           onTokenDragEnd={onMoveToken}
           selectedZone={selectedZone}
-          onSelectZone={(zone) => { setCameraSelected(false); setSelectedToken(null); setSelectedZone(zone); }}
+          onSelectZone={(zone) => { setCameraSelected(false); setSelectedTokenId(null); setSelectedZone(zone); }}
           onZoneDragEnd={onMoveZone}
           showCameraFrame={withCamera}
           cameraSelected={cameraSelected}
-          onSelectCamera={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(true); }}
+          onSelectCamera={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(true); }}
           onCameraDragEnd={onCameraDragEnd}
           onCameraResizeEnd={onCameraResizeEnd}
-          onBackgroundClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(false); }}
+          onBackgroundClick={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(false); }}
         />
 
         {/* Always rendered at a fixed width (not conditionally mounted) — otherwise the board's
@@ -508,7 +510,7 @@ export default function BoardEditor({
                 // and its badge (shifted further up to sit above that corner) gets clipped
                 // outside the board's overflow-hidden bounds, with no other way to reach it.
                 <button
-                  onClick={() => { setSelectedToken(null); setSelectedZone(null); setCameraSelected(true); }}
+                  onClick={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(true); }}
                   className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
                 >
                   🎥 Modifier le cadre projeté
