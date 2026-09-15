@@ -694,6 +694,8 @@ export default function CharacterSheet() {
               </div>
             </Card>
 
+            <DescriptionCard character={character} onRefresh={refreshCharacter} />
+
             <ArmureSelector
               character={character}
               armures={armures}
@@ -2044,6 +2046,52 @@ const MONNAIE_FIELDS = [
   ['pieces_or', '🟡', 'Or'],
   ['pieces_platine', '💠', 'Platine'],
 ];
+
+// Pure flavor text (physique, langues, croyances...) — deliberately free-form rather than
+// split into named fields, same reasoning as the equipement list below: nothing here feeds a
+// calculation, so a single textarea the player can format however they like beats a rigid
+// shape imposed for no mechanical reason. Reuses characters.notes (existing column, already
+// writable via PATCH /characters/:id, but had no UI anywhere before this).
+function DescriptionCard({ character, onRefresh }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(character.notes || '');
+
+  const save = async () => {
+    setEditing(false);
+    if (text === (character.notes || '')) return;
+    try {
+      await updateCharacter(character.id, { notes: text || null });
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <Card title="Description du personnage">
+      {editing ? (
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={save}
+          placeholder="Physique, langues parlées, croyances, traits de caractère..."
+          rows={4}
+          autoFocus
+          className="w-full px-2 py-1.5 text-sm rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
+        />
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          className="text-sm cursor-text rounded-lg border border-transparent hover:border-[var(--border)] px-2 py-1.5 -mx-2 whitespace-pre-line"
+        >
+          {character.notes || (
+            <p className="text-[var(--text-secondary)] italic">Aucune description — cliquer pour ajouter.</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 // Currency (p.23) is tracked as 4 separate piles, deliberately apart from the free-text
 // equipement list below it — no conversion between denominations is modeled, each field is
