@@ -169,6 +169,7 @@ export function StatBar({
   let barColor;
   if (isDown) barColor = 'bg-red-600';
   else if (kind === 'pm') barColor = 'bg-indigo-400';
+  else if (kind === 'chance') barColor = 'bg-amber-400';
   else barColor = pct >= 60 ? 'bg-emerald-500' : pct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
@@ -213,10 +214,10 @@ function HudCard({ entry, tone, selected, onClick }) {
         </span>
         <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} kind="pv" />
         {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} kind="pm" />}
-        <div className="flex gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] opacity-80">
-          <span>Chance {entry.points_chance}</span>
-          <span>Déf {entry.defense}</span>
-          <span>Init {entry.initiative}</span>
+        <div className="flex flex-wrap gap-x-1.5 sm:gap-x-2 gap-y-0.5 text-[9px] sm:text-[10px] opacity-80">
+          <span className="whitespace-nowrap">🍀 {entry.points_chance_current}/{entry.points_chance}</span>
+          <span className="whitespace-nowrap">🛡️ {entry.defense}</span>
+          <span className="whitespace-nowrap">⚡ {entry.initiative}</span>
         </div>
       </div>
     </div>
