@@ -1,32 +1,16 @@
-import { useState } from 'react';
-import toast from 'react-hot-toast';
 import { resolveAvatar, StatBar } from './BoardCanvas';
 import { updateCharacter } from '../utils/api';
+import { useStatAdjuster } from '../hooks/useStatAdjuster';
 
 // Same order/emoji as CharacterSheet.jsx's own CARACS/CARAC_EMOJI.
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
 const CARAC_EMOJI = { AGI: '🤸', CON: '🫀', FOR: '💪', PER: '👁️', CHA: '✨', INT: '🧠', VOL: '🔥' };
 
-// +/- next to a StatBar, mutating the character directly (not board state) — same
-// disable-while-in-flight guard as CharacterSheet.jsx's own StatAdjuster, rather than the
-// board's atomic-server-delta pattern (board_tokens/zones), since this writes to a character
-// the caller doesn't own state for: the fresh value arrives back via the board's own SSE push
-// (broadcastCharacterChange, characters.js) same as every other live stat on this card.
+// +/- next to a StatBar, mutating the character directly (not board state) — the fresh value
+// arrives back via the board's own SSE push (broadcastCharacterChange, characters.js) same as
+// every other live stat on this card.
 function AdjustableStatBar({ label, current, max, kind, characterId, field }) {
-  const [busy, setBusy] = useState(false);
-
-  const adjust = async (delta) => {
-    const next = Math.max(0, Math.min(max, current + delta));
-    if (next === current || busy) return;
-    setBusy(true);
-    try {
-      await updateCharacter(characterId, { [field]: next });
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { busy, adjust } = useStatAdjuster(current, max, (next) => updateCharacter(characterId, { [field]: next }));
 
   return (
     <div className="flex items-center gap-1.5">

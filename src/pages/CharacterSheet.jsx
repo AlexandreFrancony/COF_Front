@@ -10,6 +10,7 @@ import {
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
 import { HUMAN_ORIGINS } from '../utils/capaciteChoices';
+import { useStatAdjuster } from '../hooks/useStatAdjuster';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
 const CARAC_LABELS = {
@@ -2456,22 +2457,9 @@ function statBarColor(current, max) {
 // for PM: running out of mana just means no more spells, it doesn't knock anyone out. Both
 // still get the same empty-red bar, only the wording differs.
 function StatAdjuster({ label, current, max, onChange, koLabel = true, suffix = '' }) {
-  const [busy, setBusy] = useState(false);
+  const { busy, adjust } = useStatAdjuster(current, max, onChange);
   const isEmpty = max > 0 && current <= 0;
   const isDown = isEmpty && koLabel;
-
-  const adjust = async (delta) => {
-    const next = Math.max(0, Math.min(max, current + delta));
-    if (next === current) return;
-    setBusy(true);
-    try {
-      await onChange(next);
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
 
