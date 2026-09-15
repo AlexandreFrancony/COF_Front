@@ -183,6 +183,12 @@ export const getArmes = () => request('/rules/armes');
 export const createArme = (data) => request('/rules/armes', { method: 'POST', body: JSON.stringify(data) });
 export const deleteArme = (id) => request(`/rules/armes/${id}`, { method: 'DELETE' });
 
+// Bestiaire (Chapitre 3 "Opposition") — reference stat blocks for the board's "Bibliothèque
+// d'ennemis" picker. capacités glossary is separate (rules_monstre_capacites), for the GM
+// reference page rather than the picker itself.
+export const getMonstres = (search) => request(`/rules/monstres${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+export const getMonstreCapacites = () => request('/rules/monstre-capacites');
+
 // ============================================================================
 // LIVE BOARD (phase 2)
 // ============================================================================

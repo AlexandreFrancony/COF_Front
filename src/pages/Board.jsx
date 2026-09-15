@@ -99,9 +99,11 @@ export default function Board() {
     }
   };
 
-  const handleAddToken = async (label, hpMax, ownerCharacterId) => {
+  const handleAddToken = async (label, hpMax, ownerCharacterId, monstreId) => {
     try {
-      setBoard(await createBoardToken(campaignId, { label, hp_max: hpMax, owner_character_id: ownerCharacterId }));
+      setBoard(await createBoardToken(campaignId, {
+        label, hp_max: hpMax, owner_character_id: ownerCharacterId, monstre_id: monstreId,
+      }));
     } catch (error) {
       toast.error(error.message);
     }

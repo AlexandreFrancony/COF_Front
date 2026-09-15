@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import BoardCanvas from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
+import { getMonstres } from '../utils/api';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
   ['cone', 'Cône'],
   ['rectangle', 'Ligne / rectangle'],
 ];
+
+const MONSTRE_CATEGORY_LABELS = { humanoide: 'Humanoïdes', animal: 'Animaux', fantastique: 'Créatures fantastiques' };
 
 /**
  * The full GM board-editing UI (toolbar + canvas + side panel) — background, grid, token size,
@@ -46,6 +50,16 @@ export default function BoardEditor({
   const [newTokenHp, setNewTokenHp] = useState('');
   const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
   const [uploadingBg, setUploadingBg] = useState(false);
+  // Global reference data (same for every campaign), not board state — fetched here directly
+  // rather than threaded through props, same reasoning as CharacterSheet.jsx fetching
+  // rules_voies/rules_armures itself instead of the caller owning them.
+  const [monstres, setMonstres] = useState([]);
+  const [showMonsterLibrary, setShowMonsterLibrary] = useState(false);
+  const [monsterSearch, setMonsterSearch] = useState('');
+
+  useEffect(() => {
+    getMonstres().then(setMonstres).catch((e) => toast.error(e.message));
+  }, []);
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
   // The "Golem" capacité (which grants the actual construct, p.176 rules_capacites) only
@@ -61,6 +75,15 @@ export default function BoardEditor({
     setNewTokenLabel(`Golem de ${character.name}`);
     setNewTokenHp(String(character.level * 5));
     setNewTokenOwnerId(character.id);
+  };
+
+  // Unlike the golem shortcut, a bestiary monster's stats are fixed and known in advance —
+  // nothing ambiguous to adjust before creating, so this creates the pawn directly instead of
+  // pre-filling the form for the GM to tweak.
+  const handleAddMonstre = (monstre) => {
+    onAddToken(monstre.name, monstre.pv, null, monstre.id);
+    setShowMonsterLibrary(false);
+    setMonsterSearch('');
   };
 
   const handleBackgroundUpload = async (e) => {
@@ -156,6 +179,13 @@ export default function BoardEditor({
           className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
         >
           Bibliothèque ({mediaLibrary.length})
+        </button>
+
+        <button
+          onClick={() => setShowMonsterLibrary((v) => !v)}
+          className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+        >
+          🗡️ Bibliothèque d'ennemis ({monstres.length})
         </button>
 
         <button
@@ -280,6 +310,43 @@ export default function BoardEditor({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {showMonsterLibrary && (
+        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-sm">🗡️ Bibliothèque d'ennemis</h3>
+            <input
+              type="text"
+              placeholder="Rechercher (ex: gobelin, ours...)"
+              value={monsterSearch}
+              onChange={(e) => setMonsterSearch(e.target.value)}
+              className="px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+          </div>
+          {Object.entries(MONSTRE_CATEGORY_LABELS).map(([cat, label]) => {
+            const inCategory = monstres.filter((m) => m.category === cat
+              && m.name.toLowerCase().includes(monsterSearch.trim().toLowerCase()));
+            if (inCategory.length === 0) return null;
+            return (
+              <div key={cat}>
+                <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">{label}</h4>
+                <div className="flex flex-wrap gap-1">
+                  {inCategory.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleAddMonstre(m)}
+                      title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}`}
+                      className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                    >
+                      + {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

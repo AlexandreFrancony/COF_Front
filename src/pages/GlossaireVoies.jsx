@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getVoies, getProfils, getPeuples } from '../utils/api';
+import { getVoies, getProfils, getPeuples, getMonstreCapacites } from '../utils/api';
 
 const TYPE_LABELS = {
   profil: 'Voies de profil',
@@ -55,6 +55,19 @@ function VoieEntry({ voie, subtitle, highlighted }) {
   );
 }
 
+// A monster ability (Embuscade, Enragé, Imparable...) is a separate system from a voie's
+// capacité — several bestiary creatures share the exact same one verbatim, hence this GM-facing
+// glossary being deduplicated (rules_monstre_capacites) rather than one entry per monster.
+function CapaciteEnnemiEntry({ capacite }) {
+  return (
+    <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
+      <h3 className="cof-display font-semibold text-[var(--accent)]">{capacite.name}</h3>
+      {capacite.resume && <p className="text-sm font-medium text-[var(--accent)] mt-1">{capacite.resume}</p>}
+      <p className="text-sm text-[var(--text-secondary)] mt-0.5">{capacite.description}</p>
+    </div>
+  );
+}
+
 function GroupSection({ title, voies, defaultOpen, highlightedId, subtitleFor }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -89,17 +102,20 @@ export default function GlossaireVoies() {
   const [voies, setVoies] = useState([]);
   const [profils, setProfils] = useState([]);
   const [peuples, setPeuples] = useState([]);
+  const [capacitesEnnemis, setCapacitesEnnemis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [mode, setMode] = useState('voies'); // 'voies' | 'ennemis'
   const [searchParams] = useSearchParams();
   const highlightedId = searchParams.get('voie') ? Number(searchParams.get('voie')) : null;
 
   useEffect(() => {
-    Promise.all([getVoies({}), getProfils(), getPeuples()])
-      .then(([voiesData, profilsData, peuplesData]) => {
+    Promise.all([getVoies({}), getProfils(), getPeuples(), getMonstreCapacites()])
+      .then(([voiesData, profilsData, peuplesData, capacitesData]) => {
         setVoies(voiesData);
         setProfils(profilsData);
         setPeuples(peuplesData);
+        setCapacitesEnnemis(capacitesData);
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
@@ -144,27 +160,63 @@ export default function GlossaireVoies() {
     a.localeCompare(b)
   );
 
+  const filteredCapacitesEnnemis = capacitesEnnemis
+    .filter((c) => !searchLower
+      || c.name.toLowerCase().includes(searchLower)
+      || (c.resume || '').toLowerCase().includes(searchLower)
+      || c.description.toLowerCase().includes(searchLower))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-4">
       <div>
         <Link to="/campaigns" className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]">
           ← Retour
         </Link>
-        <h1 className="text-2xl font-bold text-[var(--accent)] mt-1">📖 Glossaire des voies</h1>
+        <h1 className="text-2xl font-bold text-[var(--accent)] mt-1">📖 Glossaire</h1>
         <p className="text-sm text-[var(--text-secondary)]">
-          Référence complète — chaque voie avec toutes ses capacités, non liée à un personnage.
+          {mode === 'voies'
+            ? 'Référence complète — chaque voie avec toutes ses capacités, non liée à un personnage.'
+            : "Capacités spéciales des ennemis du bestiaire (Embuscade, Enragé, Imparable...) — un système distinct des capacités de voies."}
         </p>
+      </div>
+
+      <div className="flex gap-2 text-sm">
+        <button
+          type="button"
+          onClick={() => setMode('voies')}
+          className={`px-3 py-1.5 rounded-lg border ${mode === 'voies' ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+        >
+          Voies
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('ennemis')}
+          className={`px-3 py-1.5 rounded-lg border ${mode === 'ennemis' ? 'border-[var(--accent)] bg-[var(--bg-input)]' : 'border-[var(--border)]'}`}
+        >
+          🗡️ Capacités d'ennemis
+        </button>
       </div>
 
       <input
         type="text"
-        placeholder="Rechercher une voie, une capacité, un profil..."
+        placeholder={mode === 'voies' ? 'Rechercher une voie, une capacité, un profil...' : 'Rechercher une capacité d\'ennemi...'}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]"
       />
 
-      {isSearching ? (
+      {mode === 'ennemis' ? (
+        filteredCapacitesEnnemis.length === 0 ? (
+          <p className="text-sm text-[var(--text-secondary)]">Aucun résultat.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {filteredCapacitesEnnemis.map((c) => (
+              <CapaciteEnnemiEntry key={c.id} capacite={c} />
+            ))}
+          </div>
+        )
+      ) : isSearching ? (
         filtered.length === 0 ? (
           <p className="text-sm text-[var(--text-secondary)]">Aucun résultat.</p>
         ) : (
