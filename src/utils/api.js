@@ -281,6 +281,10 @@ export const updateCampaignNotes = (campaignId, content) =>
 export const getNotesStreamUrl = (campaignId) =>
   `${API_URL}/notes-stream/${campaignId}?token=${encodeURIComponent(getToken() || '')}`;
 
+// Same query-token trick, see COF_Back/src/routes/sseStreams.js.
+export const getCharacterStreamUrl = (characterId) =>
+  `${API_URL}/character-stream/${characterId}?token=${encodeURIComponent(getToken() || '')}`;
+
 // Reusable library of uploaded backgrounds (images + mp4 ambiance videos), shared across campaigns.
 export const getBoardMedia = () => request('/board-media');
 export const deleteBoardMedia = (mediaId) => request(`/board-media/${mediaId}`, { method: 'DELETE' });

@@ -6,7 +6,7 @@ import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
   levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
-  getArmes, createArme, deleteArme, uploadCharacterAvatar,
+  getArmes, createArme, deleteArme, uploadCharacterAvatar, getCharacterStreamUrl,
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
 import { HUMAN_ORIGINS } from '../utils/capaciteChoices';
@@ -261,6 +261,15 @@ export default function CharacterSheet() {
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
+  }, [id]);
+
+  // Keeps this sheet in sync with changes made anywhere else — the board's own PV/PM/Chance
+  // adjuster, the GM editing the same character, another device viewing it — instead of only
+  // ever updating on this tab's own actions. Same pattern as Board.jsx's own board-stream.
+  useEffect(() => {
+    const source = new EventSource(getCharacterStreamUrl(id));
+    source.addEventListener('character', (event) => setCharacter(JSON.parse(event.data)));
+    return () => source.close();
   }, [id]);
 
   const profil = profils.find((p) => p.id === profilId);
