@@ -203,6 +203,12 @@ export const updateBoardCamera = (campaignId, data) =>
 // double-click's second delta while the first response is still in flight).
 export const updateBoardTokenSize = (campaignId, delta) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ token_size_delta: delta }) });
+export const setBoardInitiativeVisible = (campaignId, visible) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ initiative_visible: visible }) });
+export const nextInitiativeTurn = (campaignId) =>
+  request(`/campaigns/${campaignId}/board/initiative/next`, { method: 'POST' });
+export const resetInitiative = (campaignId) =>
+  request(`/campaigns/${campaignId}/board/initiative/reset`, { method: 'POST' });
 export const createBoardToken = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
 export const updateBoardToken = (tokenId, data) =>

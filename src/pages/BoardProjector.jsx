@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import BoardCanvas from '../components/BoardCanvas';
+import InitiativeTracker from '../components/InitiativeTracker';
 import { getBoard, getBoardStreamUrl } from '../utils/api';
 
 // This is opened from the GM's own logged-in browser (a second tab/window cast to a TV), so
@@ -40,13 +41,22 @@ export default function BoardProjector() {
   const hudPlayers = safeBoard.tokens.filter((t) => t.character_id && !t.is_npc);
 
   return (
-    <BoardCanvas
-      board={safeBoard}
-      isGm={false}
-      className="fixed inset-0"
-      style={{ backgroundColor: 'black' }}
-      hudPlayers={hudPlayers}
-      cameraCrop
-    />
+    <div className="fixed inset-0">
+      <BoardCanvas
+        board={safeBoard}
+        isGm={false}
+        className="absolute inset-0"
+        style={{ backgroundColor: 'black' }}
+        hudPlayers={hudPlayers}
+        cameraCrop
+      />
+      {/* Outside BoardCanvas (not affected by its cameraCrop transform), same reasoning as the
+          HUD staying fixed regardless of framing — the turn order isn't part of the scene. */}
+      {safeBoard.initiative_visible && (
+        <div className="absolute bottom-0 inset-x-0 z-50 p-3">
+          <InitiativeTracker board={safeBoard} />
+        </div>
+      )}
+    </div>
   );
 }

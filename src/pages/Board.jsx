@@ -7,11 +7,13 @@ import BoardEditor from '../components/BoardEditor';
 import NotesPanel from '../components/NotesPanel';
 import CharacterSummaryCard from '../components/CharacterSummaryCard';
 import CreatureSummaryCard from '../components/CreatureSummaryCard';
+import InitiativeTracker from '../components/InitiativeTracker';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
   getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera,
+  setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
 } from '../utils/api';
 
 export default function Board() {
@@ -231,6 +233,30 @@ export default function Board() {
     }
   };
 
+  const handleInitiativeVisibleChange = async (visible) => {
+    try {
+      setBoard(await setBoardInitiativeVisible(campaignId, visible));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleInitiativeNext = async () => {
+    try {
+      setBoard(await nextInitiativeTurn(campaignId));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleInitiativeReset = async () => {
+    try {
+      setBoard(await resetInitiative(campaignId));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   if (!campaign || !board) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
@@ -293,6 +319,9 @@ export default function Board() {
           onCameraResizeEnd={handleCameraResizeEnd}
           onCameraZoom={handleCameraZoom}
           onCameraReset={handleCameraReset}
+          onInitiativeVisibleChange={handleInitiativeVisibleChange}
+          onInitiativeNext={handleInitiativeNext}
+          onInitiativeReset={handleInitiativeReset}
           hudPlayers={hudPlayers}
           hudEnemies={hudEnemies}
         />
@@ -301,26 +330,30 @@ export default function Board() {
         // as-is (unlike the projector, which crops to the GM's chosen window). The sidebar
         // mirrors where the GM has the camera/token/zone panel, but with the campaign's
         // shared notes instead — handy to jot down or check during a live session without
-        // leaving the board.
-        <div className="flex flex-col lg:flex-row gap-4">
-          <BoardCanvas
-            board={board}
-            isGm={false}
-            className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
-            style={{ aspectRatio: '16 / 9' }}
-            hudPlayers={hudPlayers}
-            selectedToken={selectedToken}
-            onSelectToken={(token) => setSelectedTokenId(token.id)}
-            onBackgroundClick={() => setSelectedTokenId(null)}
-          />
-          <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
-            {selectedToken?.character_id ? (
-              <CharacterSummaryCard entry={selectedToken} />
-            ) : selectedToken?.hp_max != null ? (
-              <CreatureSummaryCard entry={selectedToken} />
-            ) : null}
-            <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
-              <NotesPanel campaignId={campaignId} />
+        // leaving the board. The initiative tracker only shows up here once the GM has
+        // toggled it on (BoardEditor's checkbox) — most sessions have no active combat.
+        <div className="flex flex-col gap-3">
+          {board.initiative_visible && <InitiativeTracker board={board} />}
+          <div className="flex flex-col lg:flex-row gap-4">
+            <BoardCanvas
+              board={board}
+              isGm={false}
+              className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+              style={{ aspectRatio: '16 / 9' }}
+              hudPlayers={hudPlayers}
+              selectedToken={selectedToken}
+              onSelectToken={(token) => setSelectedTokenId(token.id)}
+              onBackgroundClick={() => setSelectedTokenId(null)}
+            />
+            <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
+              {selectedToken?.character_id ? (
+                <CharacterSummaryCard entry={selectedToken} />
+              ) : selectedToken?.hp_max != null ? (
+                <CreatureSummaryCard entry={selectedToken} />
+              ) : null}
+              <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
+                <NotesPanel campaignId={campaignId} />
+              </div>
             </div>
           </div>
         </div>

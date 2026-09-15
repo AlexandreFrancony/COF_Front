@@ -2,6 +2,7 @@ import { useState } from 'react';
 import BoardCanvas from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
+import InitiativeTracker from './InitiativeTracker';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
@@ -34,6 +35,7 @@ export default function BoardEditor({
   onTokenHpChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
+  onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
   hudPlayers = null, hudEnemies = null,
 }) {
   const [selectedToken, setSelectedToken] = useState(null);
@@ -163,6 +165,17 @@ export default function BoardEditor({
           {board.grid_visible ? 'Masquer la grille' : 'Afficher la grille'}
         </button>
 
+        {withCamera && (
+          <label className="flex items-center gap-1.5 text-sm px-1">
+            <input
+              type="checkbox"
+              checked={board.initiative_visible}
+              onChange={(e) => onInitiativeVisibleChange(e.target.checked)}
+            />
+            Afficher l'initiative sur le projecteur
+          </label>
+        )}
+
         <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
           <span className="pl-1 text-[var(--text-secondary)]">Taille des pions</span>
           <button onClick={() => onTokenSize(-8)} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">−</button>
@@ -268,6 +281,10 @@ export default function BoardEditor({
             </div>
           )}
         </div>
+      )}
+
+      {withCamera && (
+        <InitiativeTracker board={board} isGm onNext={onInitiativeNext} onReset={onInitiativeReset} />
       )}
 
       <div className="flex flex-col lg:flex-row gap-4">
