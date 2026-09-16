@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 // The board area's aspect ratio; background-size/shape percentages are relative to width and
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
@@ -64,6 +64,49 @@ function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
   };
 
   return { ref, handlePointerDown };
+}
+
+// Keeps a just-removed token/zone rendered a moment longer, fading out via the caller's own
+// exit animation class, instead of an SSE-driven board update simply dropping it from the array
+// mid-frame with nothing to soften the cut. Only reacts to removals — an item still present in
+// `items` (added, moved, edited) is never touched here, and re-adding the same id before its
+// exit finishes just lets the real entry take over on the next render.
+function useExitingItems(items) {
+  const [exiting, setExiting] = useState([]);
+  const prevRef = useRef(items);
+
+  useEffect(() => {
+    const currentIds = new Set(items.map((i) => i.id));
+    const removed = prevRef.current.filter((i) => !currentIds.has(i.id));
+    prevRef.current = items;
+    if (removed.length === 0) return;
+    setExiting((prev) => [...prev, ...removed]);
+    const removedIds = new Set(removed.map((i) => i.id));
+    const timer = setTimeout(() => {
+      setExiting((prev) => prev.filter((i) => !removedIds.has(i.id)));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [items]);
+
+  return exiting;
+}
+
+// Crossfades into a new background/scene instead of an abrupt swap: keeps the previous image
+// mounted (fully opaque, underneath) just long enough for the new one to fade in on top via the
+// caller's own .scene-enter class, then drops it. The very first value never has a "previous" to
+// hold onto, so the board's initial load never fades in from a blank layer.
+function useCrossfadeBackground(url, duration = 500) {
+  const [layers, setLayers] = useState(() => ({ current: url, previous: null }));
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    setLayers((prev) => (prev.current === url ? prev : { current: url, previous: prev.current }));
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setLayers((prev) => ({ ...prev, previous: null })), duration);
+    return () => clearTimeout(timerRef.current);
+  }, [url, duration]);
+
+  return layers;
 }
 
 // A brush touches a small neighborhood of cells around the pointer, not just the exact one under
@@ -309,9 +352,9 @@ export function resolveAvatar(entry) {
 // for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
 // replacement a player sees instead — a small static badge, not a bar, since there's nothing
 // numeric behind it for them.
-function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40 }) {
+function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40, exiting = false }) {
   const { ref, handlePointerDown } = usePositionDrag(
-    isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
+    isGm && !exiting, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
   );
   const { imageUrl, emoji } = resolveAvatar(token);
   const hasHp = token.hp_max != null;
@@ -330,9 +373,9 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
       onPointerDown={handlePointerDown}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(token);
+        !exiting && onSelect(token);
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${isGm ? 'cursor-move' : 'cursor-pointer'}`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${isGm && !exiting ? 'cursor-move' : 'cursor-pointer'}`}
       style={{ left: `${token.x}%`, top: `${token.y}%`, width: size, height: size }}
     >
       <div
@@ -603,8 +646,8 @@ function CameraFrame({ board, selected, onSelect, onDragEnd, onResizeEnd }) {
   );
 }
 
-function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
-  const { ref, handlePointerDown } = usePositionDrag(isGm, zone.x, zone.y, (x, y) => onDragEnd(zone.id, x, y));
+function Zone({ zone, isGm, selected, onSelect, onDragEnd, exiting = false }) {
+  const { ref, handlePointerDown } = usePositionDrag(isGm && !exiting, zone.x, zone.y, (x, y) => onDragEnd(zone.id, x, y));
 
   return (
     <div
@@ -612,9 +655,9 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
       onPointerDown={handlePointerDown}
       onClick={(e) => {
         e.stopPropagation();
-        isGm && onSelect(zone);
+        isGm && !exiting && onSelect(zone);
       }}
-      className={`absolute ${isGm ? 'cursor-move' : 'pointer-events-none'}`}
+      className={`absolute ${exiting ? 'zone-exit pointer-events-none' : 'zone-enter'} ${isGm && !exiting ? 'cursor-move' : 'pointer-events-none'}`}
       style={{
         ...zoneShapeStyle(zone),
         backgroundColor: zone.color,
@@ -705,6 +748,14 @@ export default function BoardCanvas({
   // own visibility gate, so the glow never appears without the tracker it's an extension of.
   const activeTokenId = board.initiative_visible ? board.initiative_current_token_id : null;
 
+  // A video's "previous frame" can't be frozen into a static crossfade layer, so a change
+  // into or out of one just cuts — the crossfade only ever applies between two images.
+  const { current: bgUrl, previous: prevBgUrl } = useCrossfadeBackground(board.background_url);
+  const showCrossfade = !isVideo && prevBgUrl && prevBgUrl !== bgUrl;
+
+  const exitingTokens = useExitingItems(board.tokens);
+  const exitingZones = useExitingItems(board.zones || []);
+
   // Creature pawns (hp_max set) tied to an owner — nested right under that owner's HudCard
   // instead of their own top-level entry, so a golem reads as "belongs to this character"
   // rather than a peer combatant in the corner HUD.
@@ -725,20 +776,29 @@ export default function BoardCanvas({
 
   return (
     <div onClick={handleClick} className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`} style={style}>
+      {/* Background layer(s) only — kept separate from the content layer below so a scene change
+          never remounts (and re-plays the enter animation of) every token/zone already on the
+          map. contain (not cover): a background must always show in full at its native aspect —
+          cover would zoom-crop a portrait source (a letter, a vertical handout) down to a thin
+          vertical strip, losing most of its content, just to fill the fixed 16:9 box. */}
+      {showCrossfade && (
+        <div
+          className="bg-contain bg-center bg-no-repeat"
+          style={{ ...sceneStyle, backgroundImage: `url(${prevBgUrl})` }}
+        />
+      )}
       <div
-        // contain (not cover): a background must always show in full at its native aspect —
-        // cover would zoom-crop a portrait source (a letter, a vertical handout) down to a
-        // thin vertical strip, losing most of its content, just to fill the fixed 16:9 box.
-        className={isVideo ? '' : 'bg-contain bg-center bg-no-repeat'}
+        key={isVideo ? undefined : bgUrl}
+        className={`${isVideo ? '' : 'bg-contain bg-center bg-no-repeat'} ${showCrossfade ? 'scene-enter' : ''}`}
         style={{
           ...sceneStyle,
-          backgroundImage: !isVideo && board.background_url ? `url(${board.background_url})` : undefined,
+          backgroundImage: !isVideo && bgUrl ? `url(${bgUrl})` : undefined,
         }}
       >
         {isVideo && (
           <video
-            key={board.background_url}
-            src={board.background_url}
+            key={bgUrl}
+            src={bgUrl}
             className="absolute inset-0 w-full h-full object-cover"
             autoPlay
             loop
@@ -746,15 +806,20 @@ export default function BoardCanvas({
             playsInline
           />
         )}
-        {!board.background_url && (
+        {!bgUrl && (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)] text-sm">
             Aucun fond défini
           </div>
         )}
+      </div>
+
+      {/* Content layer — grid/zones/tokens/fog/drawings/pings, cropped identically to the
+          background above but never touched by a background-only change. */}
+      <div style={sceneStyle}>
         {board.grid_visible && (
           <div className="absolute inset-0 pointer-events-none" style={gridBackgroundStyle(board.grid_size)} />
         )}
-        {(board.zones || []).map((zone) => (
+        {[...(board.zones || []), ...exitingZones].map((zone, i) => (
           <Zone
             key={zone.id}
             zone={zone}
@@ -762,9 +827,10 @@ export default function BoardCanvas({
             selected={selectedZone?.id === zone.id}
             onSelect={onSelectZone}
             onDragEnd={onZoneDragEnd}
+            exiting={i >= (board.zones?.length || 0)}
           />
         ))}
-        {board.tokens.map((token) => (
+        {[...board.tokens, ...exitingTokens].map((token, i) => (
           <Token
             key={token.id}
             token={token}
@@ -775,6 +841,7 @@ export default function BoardCanvas({
             onSelect={onSelectToken}
             onDragEnd={onTokenDragEnd}
             size={board.token_size || 40}
+            exiting={i >= board.tokens.length}
           />
         ))}
         {board.fog_enabled && (

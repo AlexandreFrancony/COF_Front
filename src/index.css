@@ -152,3 +152,48 @@ h2,
 .handout-panel {
   animation: handout-in 0.35s ease-out;
 }
+
+/* Board: a pawn appearing/disappearing (BoardCanvas.jsx's Token) — the keyframes always carry
+   translate(-50%,-50%) alongside the scale since that's the token's own positioning transform
+   (anchoring it to its %-position); overriding transform without it would visibly snap the pawn
+   to the container's corner for the animation's duration. */
+@keyframes token-pop-in {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.token-enter {
+  animation: token-pop-in 0.25s ease-out;
+}
+@keyframes token-pop-out {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+}
+.token-exit {
+  animation: token-pop-out 0.2s ease-in forwards;
+}
+
+/* Board: a zone appearing/disappearing (BoardCanvas.jsx's Zone) — opacity only, since a zone's
+   own transform already carries its shape's rotation and can't be safely overridden here. */
+@keyframes zone-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 0.35; }
+}
+.zone-enter {
+  animation: zone-fade-in 0.3s ease-out;
+}
+@keyframes zone-fade-out {
+  0% { opacity: 0.35; }
+  100% { opacity: 0; }
+}
+.zone-exit {
+  animation: zone-fade-out 0.25s ease-in forwards;
+}
+
+/* Board: a new background/scene crossfading in over the previous one (BoardCanvas.jsx). */
+@keyframes scene-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.scene-enter {
+  animation: scene-fade-in 0.5s ease-out;
+}
