@@ -8,10 +8,16 @@ function initiativeOrder(tokens) {
     .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0) || a.id - b.id);
 }
 
+import Kbd from './Kbd';
+
 // isGm shows the Suivant/Réinitialiser controls; the read-only board/projector pass isGm=false
 // for a plain display strip. Renders nothing if there's no one to track (an empty board, or a
 // scene with only free-floating pawns) — a combat tool has nothing useful to say then.
-export default function InitiativeTracker({ board, isGm = false, onNext, onReset }) {
+//
+// onSelectToken/selectedTokenId (GM only): clicking a name jumps straight to that token's panel
+// instead of hunting for its pawn on the board — useful once a fight has several tokens stacked
+// or off the visible canvas edge.
+export default function InitiativeTracker({ board, isGm = false, onNext, onReset, onSelectToken, selectedTokenId }) {
   const order = initiativeOrder(board.tokens);
   if (order.length === 0) return null;
 
@@ -23,17 +29,21 @@ export default function InitiativeTracker({ board, isGm = false, onNext, onReset
       <div className="flex gap-1.5 min-w-0">
         {order.map((t) => {
           const active = t.id === board.initiative_current_token_id;
+          const Tag = isGm ? 'button' : 'div';
           return (
-            <div
+            <Tag
               key={t.id}
+              onClick={isGm ? () => onSelectToken(t) : undefined}
               className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs whitespace-nowrap border-l-4 shrink-0 ${
                 active ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-input)]'
+              } ${isGm ? 'hover:brightness-110 cursor-pointer' : ''} ${
+                t.id === selectedTokenId ? 'ring-2 ring-[var(--accent)]' : ''
               }`}
               style={{ borderLeftColor: active ? '#fff' : t.color || '#c65d3b' }}
             >
               <span className="font-medium">{t.character_name || t.label}</span>
               <span className="opacity-70">{t.initiative}</span>
-            </div>
+            </Tag>
           );
         })}
       </div>
@@ -50,7 +60,7 @@ export default function InitiativeTracker({ board, isGm = false, onNext, onReset
             onClick={onNext}
             className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
           >
-            Suivant →
+            Suivant → <Kbd>N</Kbd>
           </button>
         </div>
       )}
