@@ -253,6 +253,10 @@ export const undoLastBoardDrawing = (campaignId) =>
   request(`/campaigns/${campaignId}/board/drawings/last`, { method: 'DELETE' });
 export const clearBoardDrawings = (campaignId) =>
   request(`/campaigns/${campaignId}/board/drawings`, { method: 'DELETE' });
+// Clears tokens/zones/fog/drawings/handout/initiative for a new location — keeps background/
+// music/camera/grid, which are picked separately.
+export const newBoardScene = (campaignId) =>
+  request(`/campaigns/${campaignId}/board/new-scene`, { method: 'POST' });
 export const setBoardInitiativeVisible = (campaignId, visible) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ initiative_visible: visible }) });
 export const nextInitiativeTurn = (campaignId) =>

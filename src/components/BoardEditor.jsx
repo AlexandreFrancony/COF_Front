@@ -51,6 +51,7 @@ export default function BoardEditor({
   onPing, pings = [],
   onUpdateFog, onShowHandout, onHideHandout, onUploadHandoutMedia,
   onDraw, onUndoDrawing, onClearDrawings,
+  onNewScene,
   hudPlayers = null, hudEnemies = null,
 }) {
   // id only (not the token object) — re-derived from the live `board` prop below so the
@@ -440,6 +441,20 @@ export default function BoardEditor({
               Masquer
             </button>
           </div>
+        )}
+
+        {withCamera && (
+          <button
+            onClick={() => {
+              if (window.confirm('Vider le plateau (pions, zones, brouillard, dessins, document affiché) ? Le fond, la musique et la caméra sont conservés.')) {
+                onNewScene();
+              }
+            }}
+            title="Vide pions/zones/brouillard/dessins/document, garde le fond et la musique"
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-red-400 hover:text-red-500"
+          >
+            🆕 Nouvelle scène
+          </button>
         )}
 
         <button

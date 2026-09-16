@@ -16,6 +16,7 @@ import {
   getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera, updateBoardMusic, pingBoard,
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
   updateBoardFog, updateBoardHandout, addBoardDrawing, undoLastBoardDrawing, clearBoardDrawings,
+  newBoardScene,
 } from '../utils/api';
 
 export default function Board() {
@@ -183,6 +184,15 @@ export default function Board() {
   const handleClearDrawings = async () => {
     try {
       setBoard(await clearBoardDrawings(campaignId));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleNewScene = async () => {
+    try {
+      setBoard(await newBoardScene(campaignId));
+      setSelectedTokenId(null);
     } catch (error) {
       toast.error(error.message);
     }
@@ -448,6 +458,7 @@ export default function Board() {
           onDraw={handleDraw}
           onUndoDrawing={handleUndoDrawing}
           onClearDrawings={handleClearDrawings}
+          onNewScene={handleNewScene}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}

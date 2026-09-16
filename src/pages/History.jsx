@@ -7,6 +7,7 @@ import { getCampaign, getCampaignEvents, createEvent, clearCampaignEvents } from
 const TYPE_LABELS = {
   pv_change: 'PV', pm_change: 'PM', voie_added: 'Voie', voie_rang_up: 'Voie',
   voie_forgotten: 'Voie', level_up: 'Niveau', orphan_exchange: 'Point orphelin', note: 'Note',
+  scene_reset: 'Scène', background_changed: 'Décor', handout_shown: 'Document', monster_added: 'Plateau',
 };
 
 function formatTimestamp(iso) {
