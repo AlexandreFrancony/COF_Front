@@ -228,6 +228,10 @@ export const updateBoardGrid = (campaignId, data) =>
 // data: { camera_x, camera_y } on drag-end, or { camera_width_delta } on a zoom +/- click.
 export const updateBoardCamera = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
+// data: { music_url, music_playing, music_volume } — any subset. music_url: '' clears the
+// track (an actual null is a no-op server-side, same COALESCE pattern as background_url).
+export const updateBoardMusic = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
 // Atomic server-side delta, same reasoning as camera_width_delta (avoids dropping a rapid
 // double-click's second delta while the first response is still in flight).
 export const updateBoardTokenSize = (campaignId, delta) =>
@@ -308,7 +312,7 @@ export const getNotesStreamUrl = (campaignId) =>
 export const getCharacterStreamUrl = (characterId) =>
   `${API_URL}/character-stream/${characterId}?token=${encodeURIComponent(getToken() || '')}`;
 
-// Reusable library of uploaded backgrounds (images + mp4 ambiance videos), shared across campaigns.
+// Reusable library of uploaded media (images, mp4 ambiance videos, audio tracks), shared across campaigns.
 export const getBoardMedia = () => request('/board-media');
 export const deleteBoardMedia = (mediaId) => request(`/board-media/${mediaId}`, { method: 'DELETE' });
 export async function uploadBoardMedia(file) {

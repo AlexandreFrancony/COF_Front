@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import BoardCanvas from '../components/BoardCanvas';
 import InitiativeTracker from '../components/InitiativeTracker';
@@ -39,6 +39,7 @@ function playerSafeBoard(board) {
 export default function BoardProjector() {
   const { id: campaignId } = useParams();
   const [board, setBoard] = useState(null);
+  const audioRef = useRef(null);
 
   useEffect(() => {
     getBoard(campaignId).then(setBoard).catch(() => {});
@@ -50,6 +51,22 @@ export default function BoardProjector() {
     return () => source.close();
   }, [campaignId]);
 
+  // Only this page ever plays the ambiance track — never the GM's own editing view or an
+  // individual player's phone, both of which would double up the sound or play it somewhere
+  // nobody's listening. .play() can reject here if the browser's autoplay policy hasn't seen a
+  // user gesture on this page yet (opening the projector via a click normally satisfies it, but
+  // silently swallow the rejection either way rather than spamming the console every SSE tick).
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = board?.music_volume ?? 0.5;
+  }, [board?.music_volume]);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (board?.music_playing) el.play().catch(() => {});
+    else el.pause();
+  }, [board?.music_playing, board?.music_url]);
+
   if (!board) return <div className="fixed inset-0 bg-black" />;
 
   const safeBoard = playerSafeBoard(board);
@@ -57,6 +74,7 @@ export default function BoardProjector() {
 
   return (
     <div className="fixed inset-0">
+      {board.music_url && <audio key={board.music_url} ref={audioRef} src={board.music_url} loop />}
       <BoardCanvas
         board={safeBoard}
         isGm={false}

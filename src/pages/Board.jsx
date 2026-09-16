@@ -12,7 +12,7 @@ import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
-  getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera,
+  getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera, updateBoardMusic,
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
 } from '../utils/api';
 
@@ -78,6 +78,34 @@ export default function Board() {
     try {
       await deleteBoardMedia(media.id);
       setMediaLibrary((prev) => prev.filter((m) => m.id !== media.id));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  // Same two-step pattern as background: upload lands in the shared library first, then is
+  // immediately applied (music_playing: true, no reason to upload a track and not hear it).
+  const handleUploadMusic = async (file) => {
+    try {
+      const media = await uploadBoardMedia(file);
+      setMediaLibrary((prev) => [media, ...prev]);
+      setBoard(await updateBoardMusic(campaignId, { music_url: media.url, music_playing: true }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handlePickMusic = async (media) => {
+    try {
+      setBoard(await updateBoardMusic(campaignId, { music_url: media.url, music_playing: true }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleUpdateMusic = async (data) => {
+    try {
+      setBoard(await updateBoardMusic(campaignId, data));
     } catch (error) {
       toast.error(error.message);
     }
@@ -319,6 +347,9 @@ export default function Board() {
           onUploadBackground={handleUploadBackground}
           onPickBackground={handlePickBackground}
           onDeleteMedia={handleDeleteMedia}
+          onUploadMusic={handleUploadMusic}
+          onPickMusic={handlePickMusic}
+          onUpdateMusic={handleUpdateMusic}
           onToggleGrid={handleToggleGrid}
           onTokenSize={handleTokenSize}
           onAddToken={handleAddToken}

@@ -34,6 +34,7 @@ const MONSTRE_CATEGORY_LABELS = { humanoide: 'Humanoïdes', animal: 'Animaux', f
 export default function BoardEditor({
   board, characters = [],
   mediaLibrary = [], onUploadBackground, onPickBackground, onDeleteMedia,
+  onUploadMusic, onPickMusic, onUpdateMusic,
   onToggleGrid, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
   onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange,
@@ -50,6 +51,8 @@ export default function BoardEditor({
   const [selectedZone, setSelectedZone] = useState(null);
   const [cameraSelected, setCameraSelected] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showMusicLibrary, setShowMusicLibrary] = useState(false);
+  const [uploadingMusic, setUploadingMusic] = useState(false);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [newTokenHp, setNewTokenHp] = useState('');
   const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
@@ -123,6 +126,23 @@ export default function BoardEditor({
   const handlePickMedia = async (media) => {
     await onPickBackground(media);
     setShowLibrary(false);
+  };
+
+  const handleMusicUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMusic(true);
+    try {
+      await onUploadMusic(file);
+    } finally {
+      setUploadingMusic(false);
+      e.target.value = '';
+    }
+  };
+
+  const handlePickMusic = async (media) => {
+    await onPickMusic(media);
+    setShowMusicLibrary(false);
   };
 
   const handleAddToken = (e) => {
@@ -202,8 +222,47 @@ export default function BoardEditor({
           onClick={() => setShowLibrary((v) => !v)}
           className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
         >
-          Bibliothèque ({mediaLibrary.length})
+          Bibliothèque ({mediaLibrary.filter((m) => m.type !== 'audio').length})
         </button>
+
+        {withCamera && (
+          <button
+            onClick={() => setShowMusicLibrary((v) => !v)}
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            🎵 Musique ({mediaLibrary.filter((m) => m.type === 'audio').length})
+          </button>
+        )}
+
+        {/* Only rendered once a track is actually picked — nothing to play/pause/clear before
+            that. Volume/playing state lives on board_states itself (not local UI state) so it's
+            the same for every viewer of the projector, not just whichever browser last touched
+            the slider. */}
+        {withCamera && board.music_url && (
+          <div className="flex items-center gap-1.5 px-2 py-1 text-sm border border-[var(--border)] rounded">
+            <button
+              onClick={() => onUpdateMusic({ music_playing: !board.music_playing })}
+              title={board.music_playing ? 'Mettre en pause' : 'Lire'}
+              className="w-7 h-7 rounded hover:bg-[var(--bg-input)]"
+            >
+              {board.music_playing ? '⏸️' : '▶️'}
+            </button>
+            <span className="text-[var(--text-secondary)]" title="🔊 Volume">🔊</span>
+            <input
+              type="range" min="0" max="1" step="0.05"
+              value={board.music_volume ?? 0.5}
+              onChange={(e) => onUpdateMusic({ music_volume: parseFloat(e.target.value) })}
+              className="w-20"
+            />
+            <button
+              onClick={() => onUpdateMusic({ music_url: '', music_playing: false })}
+              title="Arrêter la musique"
+              className="w-7 h-7 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <button
           onClick={() => setShowMonsterLibrary((v) => !v)}
@@ -303,11 +362,11 @@ export default function BoardEditor({
       {showLibrary && (
         <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
           <h3 className="font-semibold mb-2 text-sm">Bibliothèque de fonds</h3>
-          {mediaLibrary.length === 0 ? (
+          {mediaLibrary.filter((m) => m.type !== 'audio').length === 0 ? (
             <p className="text-sm text-[var(--text-secondary)]">Aucun fond envoyé pour l'instant.</p>
           ) : (
             <div className="flex flex-wrap gap-3">
-              {mediaLibrary.map((media) => (
+              {mediaLibrary.filter((m) => m.type !== 'audio').map((media) => (
                 <div key={media.id} className="w-28 flex flex-col gap-1">
                   <button
                     onClick={() => handlePickMedia(media)}
@@ -330,6 +389,48 @@ export default function BoardEditor({
                       suppr.
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {withCamera && showMusicLibrary && (
+        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-sm">🎵 Bibliothèque de musique</h3>
+            <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
+              {uploadingMusic ? 'Envoi...' : 'Envoyer une piste'}
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleMusicUpload}
+                className="hidden"
+                disabled={uploadingMusic}
+              />
+            </label>
+          </div>
+          {mediaLibrary.filter((m) => m.type === 'audio').length === 0 ? (
+            <p className="text-sm text-[var(--text-secondary)]">Aucune piste envoyée pour l'instant.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {mediaLibrary.filter((m) => m.type === 'audio').map((media) => (
+                <div key={media.id} className="flex flex-wrap items-center gap-2 p-2 rounded border border-[var(--border)]">
+                  <span className="text-sm truncate flex-1 min-w-[8rem]" title={media.label}>🎵 {media.label}</span>
+                  <audio src={media.url} controls className="h-8 max-w-full" />
+                  <button
+                    onClick={() => handlePickMusic(media)}
+                    className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                  >
+                    Utiliser
+                  </button>
+                  <button
+                    onClick={() => onDeleteMedia(media)}
+                    className="text-[10px] text-red-500 hover:underline shrink-0"
+                  >
+                    suppr.
+                  </button>
                 </div>
               ))}
             </div>
