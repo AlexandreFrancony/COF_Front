@@ -65,10 +65,16 @@ export function resolveAvatar(entry) {
 // golem) that isn't a full character: no profil/voies/HUD card, just a life bar drawn right
 // under its avatar. At 0 PV it's greyed out rather than removed — the GM decides when to
 // actually take it off the board, same as a PNJ character token at 0 PV today.
+// When the GM marked the pawn hide_hp_from_players, the backend already nulls hp_current/
+// hp_max for a player-role fetch (board.js's stripEnemyStats) — so hasHp is only ever true here
+// for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
+// replacement a player sees instead — a small static badge, not a bar, since there's nothing
+// numeric behind it for them.
 function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
   const { ref, handlePointerDown } = usePositionDrag(isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y));
   const { imageUrl, emoji } = resolveAvatar(token);
   const hasHp = token.hp_max != null;
+  const showPlayerLabel = !hasHp && token.player_hp_label;
   const destroyed = hasHp && token.hp_current <= 0;
   const hpPct = hasHp && token.hp_max > 0 ? Math.max(0, Math.min(100, (token.hp_current / token.hp_max) * 100)) : 0;
   const hpColor = hpPct >= 60 ? 'bg-emerald-500' : hpPct >= 30 ? 'bg-amber-500' : 'bg-red-500';
@@ -104,8 +110,13 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
           />
         </div>
       )}
+      {showPlayerLabel && (
+        <span className="mt-0.5 px-1.5 py-0.5 text-[10px] leading-none rounded bg-black/60 text-white whitespace-nowrap">
+          {token.player_hp_label}
+        </span>
+      )}
       <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
-        {token.label}
+        {token.label}{isGm && token.hide_hp_from_players ? ' 🙈' : ''}
       </span>
     </div>
   );

@@ -36,7 +36,7 @@ export default function BoardEditor({
   mediaLibrary = [], onUploadBackground, onPickBackground, onDeleteMedia,
   onToggleGrid, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
-  onTokenHpChange,
+  onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
   onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
@@ -121,6 +121,10 @@ export default function BoardEditor({
   // id-based, see selectedTokenId above), so repeated +/- clicks read the actual persisted value,
   // same pattern as the zone panel's own handlePatchZone.
   const handleTokenHp = (delta) => onTokenHpChange(selectedToken.id, delta);
+  const handleToggleHideHp = () => onToggleTokenHideHp(selectedToken);
+  // Saved on blur (not on every keystroke) — same pattern as CharacterSheet.jsx's description/
+  // équipement free-text fields, no reason to fire a request per character typed.
+  const handlePlayerHpLabelBlur = (e) => onTokenPlayerLabelChange(selectedToken, e.target.value.trim());
 
   const handleToggleTokenVisible = (token) => {
     onToggleTokenVisible(token);
@@ -415,13 +419,37 @@ export default function BoardEditor({
               )}
 
               {selectedToken.hp_max != null && (
-                <div className="flex items-center justify-between text-sm">
-                  <span>PV {selectedToken.hp_current}/{selectedToken.hp_max}</span>
-                  <div className="flex gap-1">
-                    <button onClick={() => handleTokenHp(-1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                    <button onClick={() => handleTokenHp(1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>PV {selectedToken.hp_current}/{selectedToken.hp_max}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => handleTokenHp(-1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
+                      <button onClick={() => handleTokenHp(1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                    </div>
                   </div>
-                </div>
+
+                  <button
+                    onClick={handleToggleHideHp}
+                    className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                  >
+                    {selectedToken.hide_hp_from_players ? '🙈 Vie cachée aux joueurs' : '👁️ Vie visible des joueurs'}
+                  </button>
+
+                  {selectedToken.hide_hp_from_players && (
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="text-[var(--text-secondary)]">Indicateur montré aux joueurs (optionnel)</span>
+                      <input
+                        key={selectedToken.id}
+                        type="text"
+                        maxLength={20}
+                        placeholder="ex : 🩸🩸, Blessé, ??"
+                        defaultValue={selectedToken.player_hp_label || ''}
+                        onBlur={handlePlayerHpLabelBlur}
+                        className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+                      />
+                    </label>
+                  )}
+                </>
               )}
 
               <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">

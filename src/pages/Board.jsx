@@ -152,6 +152,22 @@ export default function Board() {
     }
   };
 
+  const handleToggleTokenHideHp = async (token) => {
+    try {
+      setBoard(await updateBoardToken(token.id, { hide_hp_from_players: !token.hide_hp_from_players }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleTokenPlayerLabelChange = async (token, label) => {
+    try {
+      setBoard(await updateBoardToken(token.id, { player_hp_label: label }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleTokenImageUpload = async (token, file) => {
     try {
       const { url } = await uploadBoardImage(campaignId, file);
@@ -312,6 +328,8 @@ export default function Board() {
           onDeleteToken={handleDeleteToken}
           onUploadTokenImage={handleTokenImageUpload}
           onTokenHpChange={handleTokenHpChange}
+          onToggleTokenHideHp={handleToggleTokenHideHp}
+          onTokenPlayerLabelChange={handleTokenPlayerLabelChange}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}

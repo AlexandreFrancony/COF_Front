@@ -4,6 +4,14 @@ import BoardCanvas from '../components/BoardCanvas';
 import InitiativeTracker from '../components/InitiativeTracker';
 import { getBoard, getBoardStreamUrl } from '../utils/api';
 
+// Same fields board.js's own stripEnemyStats nulls out for a player-role fetch — kept in sync
+// by hand since this path never actually calls the backend as a player (see below).
+const HIDDEN_CREATURE_FIELDS = [
+  'hp_current', 'hp_max',
+  'monstre_name', 'monstre_category', 'monstre_nc', 'monstre_defense',
+  'monstre_initiative', 'monstre_attaques', 'monstre_caracteristiques', 'monstre_capacites',
+];
+
 // This is opened from the GM's own logged-in browser (a second tab/window cast to a TV), so
 // the backend sees a GM-role request and returns the unfiltered board — hidden tokens/zones
 // and enemy stats included. The projector is exactly the screen players are meant to watch,
@@ -11,7 +19,14 @@ import { getBoard, getBoardStreamUrl } from '../utils/api';
 function playerSafeBoard(board) {
   return {
     ...board,
-    tokens: board.tokens.filter((t) => t.visible_to_players),
+    tokens: board.tokens
+      .filter((t) => t.visible_to_players)
+      .map((t) => {
+        if (!t.hide_hp_from_players) return t;
+        const stripped = { ...t };
+        for (const field of HIDDEN_CREATURE_FIELDS) stripped[field] = null;
+        return stripped;
+      }),
     zones: board.zones.filter((z) => z.visible_to_players),
   };
 }
