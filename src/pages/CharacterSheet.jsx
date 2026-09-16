@@ -579,7 +579,6 @@ export default function CharacterSheet() {
           ))}
           <DestinCard
             value={character.destin}
-            isGm={isGm}
             onChange={(v) => updateCharacter(id, { destin: v }).then(refreshCharacter)}
           />
         </div>
@@ -2502,31 +2501,32 @@ function StatAdjuster({ label, current, max, onChange, koLabel = true, suffix = 
   );
 }
 
-// The GM's own "destin" d6 (house rule, not a rulebook stat) — rolled once per session to break
-// initiative ties and as a general luck reference. Not a current/max stat like the others above,
-// so it gets its own small picker instead of reusing StatAdjuster: GM taps the face that came up,
-// players just see what it landed on.
-function DestinCard({ value, isGm, onChange }) {
+// A per-session "destin" d20 (house rule, not a rulebook stat) — the player rolls their own
+// physical die at the start of a session and types the result in; breaks initiative ties and
+// doubles as a general luck reference. Not current/max like the stats above, so it's a plain
+// number input rather than StatAdjuster — editable here by whoever can reach this sheet (the
+// owning player or the GM, same access check as every other field on it, enforced backend-side).
+function DestinCard({ value, onChange }) {
   return (
     <div className="cof-vital">
       <div className="cof-plate-head text-center py-1.5">🎲 Destin</div>
-      {isGm ? (
-        <div className="flex items-center justify-center gap-1 py-2.5">
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <button
-              key={n}
-              onClick={() => onChange(n)}
-              className={`w-6 h-6 text-xs rounded border ${
-                value === n ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--accent)]'
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="cof-display text-center font-bold text-xl py-3">{value ?? '—'}</div>
-      )}
+      <div className="flex items-center justify-center py-2.5">
+        <input
+          key={value}
+          type="number"
+          min="1"
+          max="20"
+          defaultValue={value ?? ''}
+          placeholder="—"
+          onBlur={(e) => {
+            const raw = e.target.value.trim();
+            if (!raw) return;
+            const n = Math.min(20, Math.max(1, Math.round(Number(raw))));
+            if (Number.isFinite(n) && n !== value) onChange(n);
+          }}
+          className="cof-display w-16 px-1 py-1 text-center text-xl font-bold rounded bg-[var(--bg-input)] border border-[var(--border)]"
+        />
+      </div>
     </div>
   );
 }

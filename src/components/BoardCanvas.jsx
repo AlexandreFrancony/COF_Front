@@ -803,7 +803,7 @@ export default function BoardCanvas({
       {hudPlayers?.length > 0 && (
         <div className="absolute top-2 left-2 bottom-2 z-40 flex flex-col flex-wrap content-start items-start gap-1.5 pointer-events-none">
           {hudPlayers.map((entry) => (
-            <div key={entry.id} className="flex flex-col gap-1">
+            <div key={entry.id} className="flex flex-col gap-1 items-start">
               <HudCard
                 entry={entry}
                 selected={selectedToken?.id === entry.id}

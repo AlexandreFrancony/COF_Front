@@ -77,10 +77,29 @@ export default function CharacterSummaryCard({ entry }) {
             />
           </div>
 
-          <div className="flex justify-between text-sm text-[var(--text-secondary)]">
+          <div className="flex items-center justify-between text-sm text-[var(--text-secondary)]">
             <span className="whitespace-nowrap">🛡️ Déf {entry.defense}</span>
             <span className="whitespace-nowrap">⚡ Init {entry.initiative}</span>
-            {entry.destin != null && <span className="whitespace-nowrap">🎲 Destin {entry.destin}</span>}
+            {/* Lets the GM type in what a player rolled on their own physical d20, straight from
+                the pawn — same value/editing the player can also set themselves on their sheet. */}
+            <label className="flex items-center gap-1 whitespace-nowrap" title="Destin (départage l'initiative)">
+              🎲
+              <input
+                key={entry.destin}
+                type="number"
+                min="1"
+                max="20"
+                defaultValue={entry.destin ?? ''}
+                placeholder="—"
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  if (!raw) return;
+                  const n = Math.min(20, Math.max(1, Math.round(Number(raw))));
+                  if (Number.isFinite(n) && n !== entry.destin) updateCharacter(entry.character_id, { destin: n });
+                }}
+                className="w-11 px-1 py-0.5 text-xs text-center rounded bg-[var(--bg-input)] border border-[var(--border)]"
+              />
+            </label>
           </div>
 
           {entry.caracteristiques && (
