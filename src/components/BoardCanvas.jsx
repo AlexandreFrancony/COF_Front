@@ -284,15 +284,19 @@ function HandoutOverlay({ url }) {
 // falling back to its linked character's persistent avatar_url (a real photo), then a bestiary
 // monster's own uploaded image_url (joined live, same reasoning as its other stats — a later
 // upload reaches every pawn already spawned from that entry) when the token itself has none.
-// Failing an image entirely, falls back to an emoji: the character's own avatar_emoji, or the
+// Failing an image entirely, falls back to an emoji: the character's own avatar_emoji, the
 // monster's own default emoji (seeded per bestiary entry so a spawned pawn never just shows a
-// blank color circle) — rendered as text since there's no image to use as a CSS background.
-// This is purely the pawn's visual identity, never stripped from a player-role fetch even when
-// its numeric stats (hide_hp_from_players) are — a token with no face defeats the point of it
-// being on a map at all.
+// blank color circle), or — for a golem (owner_golem_rang set, same signal CreatureSummaryCard
+// already uses) — a fixed 🗿, since a golem pawn has no avatar/monstre fields of its own to fall
+// back to otherwise. Rendered as text since there's no image to use as a CSS background. This is
+// purely the pawn's visual identity, never stripped from a player-role fetch even when its
+// numeric stats (hide_hp_from_players) are — a token with no face defeats the point of it being
+// on a map at all.
 export function resolveAvatar(entry) {
   const imageUrl = entry.image_url || entry.character_avatar_url || entry.monstre_image_url || null;
-  const emoji = !imageUrl ? entry.character_avatar_emoji || entry.monstre_emoji || null : null;
+  const emoji = !imageUrl
+    ? entry.character_avatar_emoji || entry.monstre_emoji || (entry.owner_golem_rang != null ? '🗿' : null)
+    : null;
   return { imageUrl, emoji };
 }
 
@@ -317,6 +321,10 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
   const hpColor = hpPct >= 60 ? 'bg-emerald-500' : hpPct >= 30 ? 'bg-amber-500' : 'bg-red-500';
 
   return (
+    // Exactly size x size, translated by exactly -50%/-50% — so the AVATAR's own center (not
+    // the whole label+bar stack's center) lands on the snap point. Everything below the avatar
+    // (status icons, HP bar, label) hangs off it via absolute positioning instead of sharing
+    // this box's flow, so their height never shifts where the avatar itself sits.
     <div
       ref={ref}
       onPointerDown={handlePointerDown}
@@ -324,42 +332,43 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
         e.stopPropagation();
         onSelect(token);
       }}
-      className={`absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 z-10 ${isGm ? 'cursor-move' : 'cursor-pointer'}`}
-      style={{ left: `${token.x}%`, top: `${token.y}%` }}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${isGm ? 'cursor-move' : 'cursor-pointer'}`}
+      style={{ left: `${token.x}%`, top: `${token.y}%`, width: size, height: size }}
     >
       <div
-        className={`rounded-full border-2 shadow-lg bg-cover bg-center shrink-0 flex items-center justify-center ${
+        className={`w-full h-full rounded-full border-2 shadow-lg bg-cover bg-center flex items-center justify-center ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
         } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''} ${active ? 'turn-active' : ''}`}
         style={{
-          width: size, height: size,
           backgroundColor: token.color,
           backgroundImage: imageUrl ? `url(${imageUrl})` : undefined,
         }}
       >
         {emoji && <span style={{ fontSize: size * 0.55, lineHeight: 1 }}>{emoji}</span>}
       </div>
-      {token.status_icons?.length > 0 && (
-        <div className="flex gap-0.5 -mt-1 leading-none" style={{ fontSize: Math.max(11, size * 0.4) }}>
-          {token.status_icons.map((icon, i) => <span key={i}>{icon}</span>)}
-        </div>
-      )}
-      {hasHp && (
-        <div className="mt-0.5 h-1.5 rounded-full bg-black/50 overflow-hidden shrink-0" style={{ width: size * 0.8 }}>
-          <div
-            className={`h-full transition-[width,background-color] duration-300 ease-out ${destroyed ? 'bg-red-700' : hpColor}`}
-            style={{ width: destroyed ? '100%' : `${hpPct}%` }}
-          />
-        </div>
-      )}
-      {showPlayerLabel && (
-        <span className="mt-0.5 px-1.5 py-0.5 text-[10px] leading-none rounded bg-black/60 text-white whitespace-nowrap">
-          {token.player_hp_label}
+      <div className="absolute top-full left-1/2 -translate-x-1/2 flex flex-col items-center">
+        {token.status_icons?.length > 0 && (
+          <div className="flex gap-0.5 -mt-1 leading-none" style={{ fontSize: Math.max(11, size * 0.4) }}>
+            {token.status_icons.map((icon, i) => <span key={i}>{icon}</span>)}
+          </div>
+        )}
+        {hasHp && (
+          <div className="mt-0.5 h-1.5 rounded-full bg-black/50 overflow-hidden shrink-0" style={{ width: size * 0.8 }}>
+            <div
+              className={`h-full transition-[width,background-color] duration-300 ease-out ${destroyed ? 'bg-red-700' : hpColor}`}
+              style={{ width: destroyed ? '100%' : `${hpPct}%` }}
+            />
+          </div>
+        )}
+        {showPlayerLabel && (
+          <span className="mt-0.5 px-1.5 py-0.5 text-[10px] leading-none rounded bg-black/60 text-white whitespace-nowrap">
+            {token.player_hp_label}
+          </span>
+        )}
+        <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
+          {token.label}{isGm && token.hide_hp_from_players ? ' 🙈' : ''}
         </span>
-      )}
-      <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
-        {token.label}{isGm && token.hide_hp_from_players ? ' 🙈' : ''}
-      </span>
+      </div>
     </div>
   );
 }
