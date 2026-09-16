@@ -472,6 +472,7 @@ function HudCard({ entry, tone, selected, active, onClick }) {
           <span className="whitespace-nowrap">🍀 {entry.points_chance_current}/{entry.points_chance}</span>
           <span className="whitespace-nowrap">🛡️ {entry.defense}</span>
           <span className="whitespace-nowrap">⚡ {entry.initiative}</span>
+          {entry.destin != null && <span className="whitespace-nowrap" title="Destin">🎲 {entry.destin}</span>}
         </div>
       </div>
     </div>

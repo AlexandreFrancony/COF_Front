@@ -5,7 +5,9 @@
 function initiativeOrder(tokens) {
   return tokens
     .filter((t) => t.character_id != null)
-    .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0) || a.id - b.id);
+    // Ties break on the GM's own session "destin" d6 (higher wins), same rule as board.js's
+    // own initiativeOrder() — kept in sync since both compute the same order independently.
+    .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0) || (b.destin ?? 0) - (a.destin ?? 0) || a.id - b.id);
 }
 
 import Kbd from './Kbd';
@@ -43,6 +45,7 @@ export default function InitiativeTracker({ board, isGm = false, onNext, onReset
             >
               <span className="font-medium">{t.character_name || t.label}</span>
               <span className="opacity-70">{t.initiative}</span>
+              {t.destin != null && <span className="opacity-60 text-[10px]" title="Destin (départage l'initiative)">🎲{t.destin}</span>}
             </Tag>
           );
         })}

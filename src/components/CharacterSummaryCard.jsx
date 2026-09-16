@@ -80,6 +80,7 @@ export default function CharacterSummaryCard({ entry }) {
           <div className="flex justify-between text-sm text-[var(--text-secondary)]">
             <span className="whitespace-nowrap">🛡️ Déf {entry.defense}</span>
             <span className="whitespace-nowrap">⚡ Init {entry.initiative}</span>
+            {entry.destin != null && <span className="whitespace-nowrap">🎲 Destin {entry.destin}</span>}
           </div>
 
           {entry.caracteristiques && (
