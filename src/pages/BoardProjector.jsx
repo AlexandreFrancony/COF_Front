@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import BoardCanvas from '../components/BoardCanvas';
 import InitiativeTracker from '../components/InitiativeTracker';
+import { usePings } from '../hooks/usePings';
 import { getBoard, getBoardStreamUrl } from '../utils/api';
 
 // Same fields board.js's own stripEnemyStats nulls out for a player-role fetch — kept in sync
@@ -40,6 +41,7 @@ export default function BoardProjector() {
   const { id: campaignId } = useParams();
   const [board, setBoard] = useState(null);
   const audioRef = useRef(null);
+  const [pings, addPing] = usePings();
 
   useEffect(() => {
     getBoard(campaignId).then(setBoard).catch(() => {});
@@ -48,8 +50,9 @@ export default function BoardProjector() {
   useEffect(() => {
     const source = new EventSource(getBoardStreamUrl(campaignId));
     source.addEventListener('board', (event) => setBoard(JSON.parse(event.data)));
+    source.addEventListener('ping', (event) => addPing(JSON.parse(event.data)));
     return () => source.close();
-  }, [campaignId]);
+  }, [campaignId, addPing]);
 
   // Only this page ever plays the ambiance track — never the GM's own editing view or an
   // individual player's phone, both of which would double up the sound or play it somewhere
@@ -82,6 +85,7 @@ export default function BoardProjector() {
         style={{ backgroundColor: 'black' }}
         hudPlayers={hudPlayers}
         cameraCrop
+        pings={pings}
       />
       {/* Outside BoardCanvas (not affected by its cameraCrop transform), same reasoning as the
           HUD staying fixed regardless of framing — the turn order isn't part of the scene. */}

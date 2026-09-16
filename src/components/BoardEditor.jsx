@@ -14,6 +14,13 @@ const ZONE_SHAPES = [
 
 const MONSTRE_CATEGORY_LABELS = { humanoide: 'Humanoïdes', animal: 'Animaux', fantastique: 'Créatures fantastiques' };
 
+// A handful of common COF2 combat conditions, not an exhaustive list — the free-text field next
+// to these covers anything else. Toggle presence in the selected token's own status_icons array.
+const STATUS_PRESETS = [
+  ['🤢', 'Empoisonné'], ['🔥', 'Enflammé'], ['💫', 'Étourdi'],
+  ['😱', 'Effrayé'], ['⛓️', 'Entravé'], ['🛌', 'À terre'],
+];
+
 /**
  * The full GM board-editing UI (toolbar + canvas + side panel) — background, grid, token size,
  * adding pawns/zones, and per-selection controls. Originally lived inline in Board.jsx; extracted
@@ -37,10 +44,11 @@ export default function BoardEditor({
   onUploadMusic, onPickMusic, onUpdateMusic,
   onToggleGrid, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
-  onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange,
+  onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange, onTokenStatusIconsChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
   onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
+  onPing, pings = [],
   hudPlayers = null, hudEnemies = null,
 }) {
   // id only (not the token object) — re-derived from the live `board` prop below so the
@@ -53,6 +61,8 @@ export default function BoardEditor({
   const [showLibrary, setShowLibrary] = useState(false);
   const [showMusicLibrary, setShowMusicLibrary] = useState(false);
   const [uploadingMusic, setUploadingMusic] = useState(false);
+  const [pingArmed, setPingArmed] = useState(false);
+  const [customStatusIcon, setCustomStatusIcon] = useState('');
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [newTokenHp, setNewTokenHp] = useState('');
   const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
@@ -164,6 +174,20 @@ export default function BoardEditor({
   // équipement free-text fields, no reason to fire a request per character typed.
   const handlePlayerHpLabelBlur = (e) => onTokenPlayerLabelChange(selectedToken, e.target.value.trim());
 
+  const handleToggleStatusIcon = (icon) => {
+    const current = selectedToken.status_icons || [];
+    const next = current.includes(icon) ? current.filter((i) => i !== icon) : [...current, icon];
+    onTokenStatusIconsChange(selectedToken, next);
+  };
+
+  const handleAddCustomStatusIcon = (e) => {
+    e.preventDefault();
+    const icon = customStatusIcon.trim();
+    if (!icon) return;
+    onTokenStatusIconsChange(selectedToken, [...(selectedToken.status_icons || []), icon]);
+    setCustomStatusIcon('');
+  };
+
   const handleToggleTokenVisible = (token) => {
     onToggleTokenVisible(token);
     setSelectedTokenId(null);
@@ -262,6 +286,18 @@ export default function BoardEditor({
               ✕
             </button>
           </div>
+        )}
+
+        {withCamera && (
+          <button
+            onClick={() => setPingArmed((v) => !v)}
+            title="Le prochain clic sur le plateau montre un repère à tout le monde"
+            className={`px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${
+              pingArmed ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
+            }`}
+          >
+            📍 Pointeur
+          </button>
         )}
 
         <button
@@ -533,6 +569,9 @@ export default function BoardEditor({
           onCameraDragEnd={onCameraDragEnd}
           onCameraResizeEnd={onCameraResizeEnd}
           onBackgroundClick={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(false); }}
+          pingMode={pingArmed}
+          onPing={(x, y) => { onPing(x, y); setPingArmed(false); }}
+          pings={pings}
         />
 
         {/* Always rendered at a fixed width (not conditionally mounted) — otherwise the board's
@@ -603,6 +642,39 @@ export default function BoardEditor({
                     </label>
                   )}
                 </>
+              )}
+
+              {withCamera && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-[var(--text-secondary)]">État</span>
+                <div className="flex flex-wrap gap-1">
+                  {STATUS_PRESETS.map(([icon, name]) => (
+                    <button
+                      key={icon}
+                      onClick={() => handleToggleStatusIcon(icon)}
+                      title={name}
+                      className={`w-8 h-8 text-base rounded border hover:border-[var(--accent)] ${
+                        selectedToken.status_icons?.includes(icon) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)]'
+                      }`}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+                <form onSubmit={handleAddCustomStatusIcon} className="flex gap-1">
+                  <input
+                    type="text"
+                    maxLength={4}
+                    placeholder="Autre emoji"
+                    value={customStatusIcon}
+                    onChange={(e) => setCustomStatusIcon(e.target.value)}
+                    className="w-24 px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+                  />
+                  <button type="submit" className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">
+                    Ajouter
+                  </button>
+                </form>
+              </div>
               )}
 
               <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">

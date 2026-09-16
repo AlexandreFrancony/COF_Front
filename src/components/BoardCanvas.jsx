@@ -18,7 +18,11 @@ export function gridBackgroundStyle(gridSize) {
 
 // Shared "drag an absolutely-positioned marker around the board, in %" behavior for both
 // tokens and zones. Reports the final position on pointerup; the caller persists it.
-function usePositionDrag(enabled, x, y, onDragEnd) {
+// snapGridSize (tokens only, when the grid is actually visible) rounds the live position to the
+// nearest cell as you drag — COF2 combat is played in cases (p.ex. portées/déplacements), so a
+// pawn that only ever lands on a cell boundary matches the book's own math instead of a
+// continuous %-position a player would have to eyeball against the grid lines.
+function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
   const ref = useRef(null);
 
   const handlePointerDown = (e) => {
@@ -29,8 +33,14 @@ function usePositionDrag(enabled, x, y, onDragEnd) {
     const rect = container.getBoundingClientRect();
 
     const move = (ev) => {
-      const nx = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
-      const ny = Math.min(100, Math.max(0, ((ev.clientY - rect.top) / rect.height) * 100));
+      let nx = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
+      let ny = Math.min(100, Math.max(0, ((ev.clientY - rect.top) / rect.height) * 100));
+      if (snapGridSize) {
+        const cellX = 100 / snapGridSize;
+        const cellY = cellX * BOARD_ASPECT_RATIO;
+        nx = Math.min(100, Math.max(0, Math.round(nx / cellX) * cellX));
+        ny = Math.min(100, Math.max(0, Math.round(ny / cellY) * cellY));
+      }
       ref.current.style.left = `${nx}%`;
       ref.current.style.top = `${ny}%`;
       ref.current.dataset.x = nx;
@@ -75,8 +85,10 @@ export function resolveAvatar(entry) {
 // for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
 // replacement a player sees instead — a small static badge, not a bar, since there's nothing
 // numeric behind it for them.
-function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
-  const { ref, handlePointerDown } = usePositionDrag(isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y));
+function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40 }) {
+  const { ref, handlePointerDown } = usePositionDrag(
+    isGm, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
+  );
   const { imageUrl, emoji } = resolveAvatar(token);
   const hasHp = token.hp_max != null;
   const showPlayerLabel = !hasHp && token.player_hp_label;
@@ -98,7 +110,7 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
       <div
         className={`rounded-full border-2 shadow-lg bg-cover bg-center shrink-0 flex items-center justify-center ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
-        } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''}`}
+        } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''} ${active ? 'turn-active' : ''}`}
         style={{
           width: size, height: size,
           backgroundColor: token.color,
@@ -107,6 +119,11 @@ function Token({ token, isGm, selected, onSelect, onDragEnd, size = 40 }) {
       >
         {emoji && <span style={{ fontSize: size * 0.55, lineHeight: 1 }}>{emoji}</span>}
       </div>
+      {token.status_icons?.length > 0 && (
+        <div className="flex gap-0.5 -mt-1 leading-none" style={{ fontSize: Math.max(11, size * 0.4) }}>
+          {token.status_icons.map((icon, i) => <span key={i}>{icon}</span>)}
+        </div>
+      )}
       {hasHp && (
         <div className="mt-0.5 h-1.5 rounded-full bg-black/50 overflow-hidden shrink-0" style={{ width: size * 0.8 }}>
           <div
@@ -202,7 +219,7 @@ export function StatBar({
   );
 }
 
-function HudCard({ entry, tone, selected, onClick }) {
+function HudCard({ entry, tone, selected, active, onClick }) {
   // Ties the card back to its pawn on the map: the token's own color when it has one, else a
   // sensible default per side (still distinguishes players from enemies at a glance).
   const accentColor = entry.color || (tone === 'enemy' ? '#ef4444' : '#c65d3b');
@@ -212,7 +229,7 @@ function HudCard({ entry, tone, selected, onClick }) {
       onClick={onClick}
       className={`flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2 py-1 sm:pl-2 sm:pr-2.5 sm:py-1.5 rounded-lg border-l-[3px] sm:border-l-4 bg-black/55 backdrop-blur-sm text-white shadow-md ${
         onClick ? 'pointer-events-auto cursor-pointer' : ''
-      } ${selected ? 'ring-2 ring-white' : ''}`}
+      } ${selected ? 'ring-2 ring-white' : ''} ${active ? 'turn-active' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div
@@ -227,6 +244,7 @@ function HudCard({ entry, tone, selected, onClick }) {
       <div className="flex flex-col gap-0.5 min-w-0">
         <span className="text-[10px] sm:text-[11px] font-semibold leading-none truncate max-w-[5.5rem] sm:max-w-[9rem]" title={entry.character_name || entry.label}>
           {entry.character_name || entry.label}
+          {entry.status_icons?.length > 0 && <span className="ml-1">{entry.status_icons.join('')}</span>}
         </span>
         <StatBar label="PV" current={entry.pv_current} max={entry.pv_max} kind="pv" />
         {entry.pm_max > 0 && <StatBar label="PM" current={entry.pm_current} max={entry.pm_max} kind="pm" />}
@@ -378,6 +396,20 @@ function Zone({ zone, isGm, selected, onSelect, onDragEnd }) {
   );
 }
 
+// A transient "look here" marker (see BoardEditor.jsx's pointer tool) — purely decorative,
+// never intercepts clicks, removed by the caller a moment after it appears (see the ping-ring
+// animation in index.css for the actual fade/expand timing).
+function Ping({ x, y }) {
+  return (
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+      style={{ left: `${x}%`, top: `${y}%` }}
+    >
+      <div className="w-10 h-10 rounded-full border-4 border-amber-400 ping-marker" />
+    </div>
+  );
+}
+
 // Maps the scene's camera window ((camera_x, camera_y) center, camera_width wide/tall, all in
 // % of the full scene) onto a transform that crops+scales the scene to fill its container.
 // Derivation: scale S = 100/camera_width; with transform-origin at 0 0, `scale(S)` alone maps
@@ -432,9 +464,14 @@ export default function BoardCanvas({
   cameraCrop = false,
   showCameraFrame = false, cameraSelected = false, onSelectCamera = () => {}, onCameraDragEnd = () => {},
   onCameraResizeEnd = () => {},
+  pings = [], pingMode = false, onPing = () => {},
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
+  // Only meaningful once the GM has actually started a turn order (initiative_current_token_id
+  // set) and chosen to show it at all (initiative_visible) — matches the InitiativeTracker's
+  // own visibility gate, so the glow never appears without the tracker it's an extension of.
+  const activeTokenId = board.initiative_visible ? board.initiative_current_token_id : null;
 
   // Creature pawns (hp_max set) tied to an owner — nested right under that owner's HudCard
   // instead of their own top-level entry, so a golem reads as "belongs to this character"
@@ -446,8 +483,16 @@ export default function BoardCanvas({
     }
   }
 
+  // Pointer tool (BoardEditor.jsx's "📍 Pointeur" toggle): the next click anywhere on the scene
+  // broadcasts a ping instead of the usual deselect-everything background click.
+  const handleClick = (e) => {
+    if (!pingMode) return onBackgroundClick();
+    const rect = e.currentTarget.getBoundingClientRect();
+    onPing(((e.clientX - rect.left) / rect.width) * 100, ((e.clientY - rect.top) / rect.height) * 100);
+  };
+
   return (
-    <div onClick={onBackgroundClick} className={`overflow-hidden ${className}`} style={style}>
+    <div onClick={handleClick} className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`} style={style}>
       <div
         // contain (not cover): a background must always show in full at its native aspect —
         // cover would zoom-crop a portrait source (a letter, a vertical handout) down to a
@@ -493,11 +538,14 @@ export default function BoardCanvas({
             token={token}
             isGm={isGm}
             selected={selectedToken?.id === token.id}
+            active={token.id === activeTokenId}
+            gridSize={board.grid_visible ? board.grid_size : null}
             onSelect={onSelectToken}
             onDragEnd={onTokenDragEnd}
             size={board.token_size || 40}
           />
         ))}
+        {pings.map((ping) => <Ping key={ping.id} x={ping.x} y={ping.y} />)}
       </div>
 
       {showCameraFrame && (
@@ -521,6 +569,7 @@ export default function BoardCanvas({
               <HudCard
                 entry={entry}
                 selected={selectedToken?.id === entry.id}
+                active={entry.id === activeTokenId}
                 onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
               />
               {creaturesByOwner[entry.character_id]?.map((creature) => (
@@ -544,6 +593,7 @@ export default function BoardCanvas({
                 entry={entry}
                 tone="enemy"
                 selected={selectedToken?.id === entry.id}
+                active={entry.id === activeTokenId}
                 onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
               />
               {creaturesByOwner[entry.character_id]?.map((creature) => (

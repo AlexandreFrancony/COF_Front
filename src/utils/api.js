@@ -236,6 +236,9 @@ export const updateBoardMusic = (campaignId, data) =>
 // double-click's second delta while the first response is still in flight).
 export const updateBoardTokenSize = (campaignId, delta) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ token_size_delta: delta }) });
+// Transient — nothing to read back, the response is a bare 204.
+export const pingBoard = (campaignId, x, y) =>
+  request(`/campaigns/${campaignId}/board/ping`, { method: 'POST', body: JSON.stringify({ x, y }) });
 export const setBoardInitiativeVisible = (campaignId, visible) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ initiative_visible: visible }) });
 export const nextInitiativeTurn = (campaignId) =>

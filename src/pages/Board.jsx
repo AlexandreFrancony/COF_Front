@@ -8,11 +8,12 @@ import NotesPanel from '../components/NotesPanel';
 import CharacterSummaryCard from '../components/CharacterSummaryCard';
 import CreatureSummaryCard from '../components/CreatureSummaryCard';
 import InitiativeTracker from '../components/InitiativeTracker';
+import { usePings } from '../hooks/usePings';
 import {
   getBoard, updateBoardBackground, updateBoardGrid, updateBoardTokenSize, uploadBoardImage, createBoardToken,
   updateBoardToken, deleteBoardToken, createBoardZone, updateBoardZone, deleteBoardZone,
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
-  getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera, updateBoardMusic,
+  getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera, updateBoardMusic, pingBoard,
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
 } from '../utils/api';
 
@@ -26,6 +27,7 @@ export default function Board() {
   // id only (not the token object) — re-derived from the live `board` below so the card keeps
   // reflecting PV/PM as they change via SSE instead of freezing at the moment it was clicked.
   const [selectedTokenId, setSelectedTokenId] = useState(null);
+  const [pings, addPing] = usePings();
 
   useEffect(() => {
     (async () => {
@@ -51,8 +53,9 @@ export default function Board() {
   useEffect(() => {
     const source = new EventSource(getBoardStreamUrl(campaignId));
     source.addEventListener('board', (event) => setBoard(JSON.parse(event.data)));
+    source.addEventListener('ping', (event) => addPing(JSON.parse(event.data)));
     return () => source.close();
-  }, [campaignId]);
+  }, [campaignId, addPing]);
 
   // Every upload lands in the shared library first (so it's reusable next time / in another
   // campaign), then is immediately applied as this board's background.
@@ -106,6 +109,19 @@ export default function Board() {
   const handleUpdateMusic = async (data) => {
     try {
       setBoard(await updateBoardMusic(campaignId, data));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  // Fire-and-forget — a ping is never part of board state, nothing here to apply to `board`.
+  const handlePing = (x, y) => {
+    pingBoard(campaignId, x, y).catch((error) => toast.error(error.message));
+  };
+
+  const handleTokenStatusIconsChange = async (token, icons) => {
+    try {
+      setBoard(await updateBoardToken(token.id, { status_icons: icons }));
     } catch (error) {
       toast.error(error.message);
     }
@@ -361,6 +377,9 @@ export default function Board() {
           onTokenHpChange={handleTokenHpChange}
           onToggleTokenHideHp={handleToggleTokenHideHp}
           onTokenPlayerLabelChange={handleTokenPlayerLabelChange}
+          onTokenStatusIconsChange={handleTokenStatusIconsChange}
+          onPing={handlePing}
+          pings={pings}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}
@@ -395,6 +414,7 @@ export default function Board() {
               selectedToken={selectedToken}
               onSelectToken={(token) => setSelectedTokenId(token.id)}
               onBackgroundClick={() => setSelectedTokenId(null)}
+              pings={pings}
             />
             <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
               {selectedToken?.character_id ? (

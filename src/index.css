@@ -124,3 +124,21 @@ h2,
   font-weight: 700;
   letter-spacing: 0.03em;
 }
+
+/* Board: whoever currently has the initiative turn (BoardCanvas.jsx's Token/HudCard). */
+@keyframes turn-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 164, 65, 0.7); }
+  50% { box-shadow: 0 0 0 6px rgba(217, 164, 65, 0); }
+}
+.turn-active {
+  animation: turn-glow 1.8s ease-in-out infinite;
+}
+
+/* Board: the GM's pointer tool (BoardCanvas.jsx's Ping) — an expanding, fading ring. */
+@keyframes ping-ring {
+  0% { transform: scale(0.3); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.ping-marker {
+  animation: ping-ring 1.6s ease-out forwards;
+}
