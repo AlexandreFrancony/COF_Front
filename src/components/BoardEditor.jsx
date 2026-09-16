@@ -65,6 +65,9 @@ export default function BoardEditor({
   const [showLibrary, setShowLibrary] = useState(false);
   const [showHandoutLibrary, setShowHandoutLibrary] = useState(false);
   const [uploadingHandout, setUploadingHandout] = useState(false);
+  // The library thumbnail is small and cropped (object-cover) — not enough to actually read a
+  // letter before deciding to show it. This holds which media is open in the full-size lightbox.
+  const [previewHandout, setPreviewHandout] = useState(null);
   const [showMusicLibrary, setShowMusicLibrary] = useState(false);
   const [uploadingMusic, setUploadingMusic] = useState(false);
   const [pingArmed, setPingArmed] = useState(false);
@@ -101,6 +104,7 @@ export default function BoardEditor({
           setSelectedTokenId(null);
           setSelectedZone(null);
           setCameraSelected(false);
+          setPreviewHandout(null);
           break;
         case 'p':
           if (withCamera) armPing();
@@ -695,9 +699,16 @@ export default function BoardEditor({
             <div className="flex flex-wrap gap-3">
               {handoutMedia.map((media) => (
                 <div key={media.id} className="w-28 flex flex-col gap-1">
-                  <div className="w-28 h-20 rounded border border-[var(--border)] overflow-hidden bg-black/20 flex items-center justify-center">
+                  <button
+                    onClick={() => setPreviewHandout(media)}
+                    title="Aperçu avant de le montrer aux joueurs"
+                    className="relative w-28 h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 flex items-center justify-center group"
+                  >
                     <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
-                  </div>
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition-colors">
+                      <span className="opacity-0 group-hover:opacity-100 text-lg">👁️</span>
+                    </span>
+                  </button>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
                       📄 {media.label}
@@ -713,12 +724,44 @@ export default function BoardEditor({
                     onClick={() => onShowHandout(media.url)}
                     className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
                   >
-                    👁️ Montrer aux joueurs
+                    📢 Montrer aux joueurs
                   </button>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {previewHandout && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6"
+          onClick={() => setPreviewHandout(null)}
+        >
+          <div className="flex flex-col gap-2 max-w-3xl max-h-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewHandout.url}
+              alt={previewHandout.label}
+              className="max-w-full max-h-[80vh] object-contain rounded-lg border-2 border-[var(--accent)] shadow-2xl"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-white/80 truncate">{previewHandout.label}</span>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => { onShowHandout(previewHandout.url); setPreviewHandout(null); }}
+                  className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                >
+                  📢 Montrer aux joueurs
+                </button>
+                <button
+                  onClick={() => setPreviewHandout(null)}
+                  className="px-3 py-1.5 text-sm rounded border border-white/30 text-white hover:bg-white/10"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

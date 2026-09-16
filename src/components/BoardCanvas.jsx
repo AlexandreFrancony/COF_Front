@@ -258,10 +258,11 @@ function DrawingLayer({ drawings, editable, color, onDraw }) {
 }
 
 // A small panel that slides in from the right over the scene — a letter, an NPC portrait, a map
-// excerpt — on the player/projector views only (the caller never renders this for the GM's own
-// canvas, so their working view of the live map is never interrupted by what they're currently
-// showing). Deliberately leaves the board visible around it rather than covering the whole
-// scene, so showing a document doesn't blank out the map/tokens the players were looking at.
+// excerpt. Rendered for every role, GM included: since it's a small corner panel rather than a
+// full-screen takeover, the GM keeps seeing it too instead of only finding out what's currently
+// shown to players by checking the projector — same reasoning as the toolbar's "document affiché"
+// status. Deliberately leaves the board visible around it rather than covering the whole scene,
+// so showing a document doesn't blank out the map/tokens the players were looking at.
 function HandoutOverlay({ url }) {
   // inset-0 (not inset-y-0 + right-0) so this box has a definite width up front — an
   // absolutely-positioned flex box sized by shrink-to-fit while a child's max-width is itself
@@ -782,7 +783,7 @@ export default function BoardCanvas({
         {pings.map((ping) => <Ping key={ping.id} x={ping.x} y={ping.y} />)}
       </div>
 
-      {!isGm && board.handout_url && <HandoutOverlay url={board.handout_url} />}
+      {board.handout_url && <HandoutOverlay url={board.handout_url} />}
 
       {showCameraFrame && (
         <CameraFrame
