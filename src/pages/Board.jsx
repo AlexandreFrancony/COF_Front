@@ -150,6 +150,18 @@ export default function Board() {
 
   const handleHideHandout = () => handleShowHandout('');
 
+  // Unlike background/music uploads, this only adds to the library — showing a document to
+  // players is a deliberate, disruptive action that shouldn't happen automatically just because
+  // the GM finished uploading it.
+  const handleUploadHandoutMedia = async (file) => {
+    try {
+      const media = await uploadBoardMedia(file, 'handout');
+      setMediaLibrary((prev) => [media, ...prev]);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   // Any campaign member can draw (see board.js's POST /board/drawings) — this same handler is
   // wired to both the GM's BoardEditor and the player's own draw toggle below.
   const handleDraw = async (points, color) => {
@@ -432,6 +444,7 @@ export default function Board() {
           onUpdateFog={handleUpdateFog}
           onShowHandout={handleShowHandout}
           onHideHandout={handleHideHandout}
+          onUploadHandoutMedia={handleUploadHandoutMedia}
           onDraw={handleDraw}
           onUndoDrawing={handleUndoDrawing}
           onClearDrawings={handleClearDrawings}

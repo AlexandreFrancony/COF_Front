@@ -49,7 +49,7 @@ export default function BoardEditor({
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
   onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
   onPing, pings = [],
-  onUpdateFog, onShowHandout, onHideHandout,
+  onUpdateFog, onShowHandout, onHideHandout, onUploadHandoutMedia,
   onDraw, onUndoDrawing, onClearDrawings,
   hudPlayers = null, hudEnemies = null,
 }) {
@@ -61,6 +61,8 @@ export default function BoardEditor({
   const [selectedZone, setSelectedZone] = useState(null);
   const [cameraSelected, setCameraSelected] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showHandoutLibrary, setShowHandoutLibrary] = useState(false);
+  const [uploadingHandout, setUploadingHandout] = useState(false);
   const [showMusicLibrary, setShowMusicLibrary] = useState(false);
   const [uploadingMusic, setUploadingMusic] = useState(false);
   const [pingArmed, setPingArmed] = useState(false);
@@ -92,6 +94,12 @@ export default function BoardEditor({
   useEffect(() => {
     getMonstres().then(setMonstres).catch((e) => toast.error(e.message));
   }, []);
+
+  // Kept in separate buckets so picking a fond never surfaces a handout letter (or vice versa) —
+  // both are 'image'-mimetype uploads, only board_media.type (set by which uploader was used)
+  // tells them apart.
+  const backgroundMedia = mediaLibrary.filter((m) => m.type === 'image' || m.type === 'video');
+  const handoutMedia = mediaLibrary.filter((m) => m.type === 'handout');
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
   // The "Golem" capacité (which grants the actual construct, p.176 rules_capacites) only
@@ -150,6 +158,18 @@ export default function BoardEditor({
   const handlePickMedia = async (media) => {
     await onPickBackground(media);
     setShowLibrary(false);
+  };
+
+  const handleHandoutUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingHandout(true);
+    try {
+      await onUploadHandoutMedia(file);
+    } finally {
+      setUploadingHandout(false);
+      e.target.value = '';
+    }
   };
 
   const handleMusicUpload = async (e) => {
@@ -270,8 +290,17 @@ export default function BoardEditor({
           onClick={() => setShowLibrary((v) => !v)}
           className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
         >
-          Bibliothèque ({mediaLibrary.filter((m) => m.type !== 'audio').length})
+          Bibliothèque ({backgroundMedia.length})
         </button>
+
+        {withCamera && (
+          <button
+            onClick={() => setShowHandoutLibrary((v) => !v)}
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            📄 Documents ({handoutMedia.length})
+          </button>
+        )}
 
         {withCamera && (
           <button
@@ -511,11 +540,11 @@ export default function BoardEditor({
       {showLibrary && (
         <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
           <h3 className="font-semibold mb-2 text-sm">Bibliothèque de fonds</h3>
-          {mediaLibrary.filter((m) => m.type !== 'audio').length === 0 ? (
+          {backgroundMedia.length === 0 ? (
             <p className="text-sm text-[var(--text-secondary)]">Aucun fond envoyé pour l'instant.</p>
           ) : (
             <div className="flex flex-wrap gap-3">
-              {mediaLibrary.filter((m) => m.type !== 'audio').map((media) => (
+              {backgroundMedia.map((media) => (
                 <div key={media.id} className="w-28 flex flex-col gap-1">
                   <button
                     onClick={() => handlePickMedia(media)}
@@ -538,15 +567,54 @@ export default function BoardEditor({
                       suppr.
                     </button>
                   </div>
-                  {withCamera && media.type === 'image' && (
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {withCamera && showHandoutLibrary && (
+        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-sm">📄 Bibliothèque de documents</h3>
+            <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
+              {uploadingHandout ? 'Envoi...' : 'Envoyer un document'}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleHandoutUpload}
+                className="hidden"
+                disabled={uploadingHandout}
+              />
+            </label>
+          </div>
+          {handoutMedia.length === 0 ? (
+            <p className="text-sm text-[var(--text-secondary)]">Aucun document envoyé pour l'instant.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {handoutMedia.map((media) => (
+                <div key={media.id} className="w-28 flex flex-col gap-1">
+                  <div className="w-28 h-20 rounded border border-[var(--border)] overflow-hidden bg-black/20 flex items-center justify-center">
+                    <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
+                      📄 {media.label}
+                    </span>
                     <button
-                      onClick={() => onShowHandout(media.url)}
-                      title="Montrer cette image en plein écran aux joueurs (pas comme fond du plateau)"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                      onClick={() => onDeleteMedia(media)}
+                      className="text-[10px] text-red-500 hover:underline shrink-0"
                     >
-                      👁️ Montrer aux joueurs
+                      suppr.
                     </button>
-                  )}
+                  </div>
+                  <button
+                    onClick={() => onShowHandout(media.url)}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                  >
+                    👁️ Montrer aux joueurs
+                  </button>
                 </div>
               ))}
             </div>

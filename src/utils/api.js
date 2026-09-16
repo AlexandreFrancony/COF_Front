@@ -329,13 +329,17 @@ export const getNotesStreamUrl = (campaignId) =>
 export const getCharacterStreamUrl = (characterId) =>
   `${API_URL}/character-stream/${characterId}?token=${encodeURIComponent(getToken() || '')}`;
 
-// Reusable library of uploaded media (images, mp4 ambiance videos, audio tracks), shared across campaigns.
+// Reusable library of uploaded media (images, mp4 ambiance videos, audio tracks, handout
+// documents), shared across campaigns.
 export const getBoardMedia = () => request('/board-media');
 export const deleteBoardMedia = (mediaId) => request(`/board-media/${mediaId}`, { method: 'DELETE' });
-export async function uploadBoardMedia(file) {
+// kind: 'handout' tags a plain image as a document (separate bucket from background images) —
+// omit for a background/video/audio upload, where the mimetype alone already says what it is.
+export async function uploadBoardMedia(file, kind) {
   const token = getToken();
   const formData = new FormData();
   formData.append('file', file);
+  if (kind) formData.append('kind', kind);
 
   const response = await fetch(`${API_URL}/board-media`, {
     method: 'POST',
