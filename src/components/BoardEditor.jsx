@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import BoardCanvas from './BoardCanvas';
+import BoardCanvas, { FOG_COLS, FOG_ROWS } from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
@@ -49,6 +49,8 @@ export default function BoardEditor({
   withCamera = false, onCameraDragEnd, onCameraResizeEnd, onCameraZoom, onCameraReset,
   onInitiativeVisibleChange, onInitiativeNext, onInitiativeReset,
   onPing, pings = [],
+  onUpdateFog, onShowHandout, onHideHandout,
+  onDraw, onUndoDrawing, onClearDrawings,
   hudPlayers = null, hudEnemies = null,
 }) {
   // id only (not the token object) — re-derived from the live `board` prop below so the
@@ -63,6 +65,18 @@ export default function BoardEditor({
   const [uploadingMusic, setUploadingMusic] = useState(false);
   const [pingArmed, setPingArmed] = useState(false);
   const [customStatusIcon, setCustomStatusIcon] = useState('');
+  const [fogPaintArmed, setFogPaintArmed] = useState(false);
+  const [fogBrushMode, setFogBrushMode] = useState('reveal');
+  const [fogBrushRadius, setFogBrushRadius] = useState(2);
+  const [drawArmed, setDrawArmed] = useState(false);
+  const [drawColor, setDrawColor] = useState('#ef4444');
+
+  // Only one pointer-capturing mode at a time — arming a second one while another is active
+  // would leave two overlays fighting over the same clicks, so picking one always clears the
+  // others rather than stacking.
+  const armPing = () => setPingArmed((v) => { const next = !v; if (next) { setFogPaintArmed(false); setDrawArmed(false); } return next; });
+  const armFogPaint = () => setFogPaintArmed((v) => { const next = !v; if (next) { setPingArmed(false); setDrawArmed(false); } return next; });
+  const armDraw = () => setDrawArmed((v) => { const next = !v; if (next) { setPingArmed(false); setFogPaintArmed(false); } return next; });
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [newTokenHp, setNewTokenHp] = useState('');
   const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
@@ -188,6 +202,16 @@ export default function BoardEditor({
     setCustomStatusIcon('');
   };
 
+  // Merges the cells just painted into the board's own persisted set before sending the full
+  // array — board.fog_revealed is already in hand via the `board` prop, no need for the caller
+  // to know fog's own merge rules.
+  const handleFogPaint = (cells, mode) => {
+    const current = new Set(board.fog_revealed || []);
+    if (mode === 'hide') cells.forEach((c) => current.delete(c));
+    else cells.forEach((c) => current.add(c));
+    onUpdateFog({ fog_revealed: [...current] });
+  };
+
   const handleToggleTokenVisible = (token) => {
     onToggleTokenVisible(token);
     setSelectedTokenId(null);
@@ -290,7 +314,7 @@ export default function BoardEditor({
 
         {withCamera && (
           <button
-            onClick={() => setPingArmed((v) => !v)}
+            onClick={armPing}
             title="Le prochain clic sur le plateau montre un repère à tout le monde"
             className={`px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${
               pingArmed ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
@@ -298,6 +322,95 @@ export default function BoardEditor({
           >
             📍 Pointeur
           </button>
+        )}
+
+        {withCamera && (
+          <button
+            onClick={() => onUpdateFog({ fog_enabled: !board.fog_enabled })}
+            className={`px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${
+              board.fog_enabled ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
+            }`}
+          >
+            🌫️ Brouillard
+          </button>
+        )}
+
+        {withCamera && board.fog_enabled && (
+          <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
+            <button
+              onClick={armFogPaint}
+              className={`px-2 py-1 rounded ${fogPaintArmed ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}
+            >
+              🖌️ Peindre
+            </button>
+            {fogPaintArmed && (
+              <>
+                <select
+                  value={fogBrushMode}
+                  onChange={(e) => setFogBrushMode(e.target.value)}
+                  className="px-1 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+                >
+                  <option value="reveal">Révéler</option>
+                  <option value="hide">Masquer</option>
+                </select>
+                <span className="pl-1 text-[var(--text-secondary)]">Taille</span>
+                <button onClick={() => setFogBrushRadius((r) => Math.max(1, r - 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">−</button>
+                <button onClick={() => setFogBrushRadius((r) => Math.min(6, r + 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">+</button>
+              </>
+            )}
+            <button
+              onClick={() => onUpdateFog({ fog_revealed: [] })}
+              title="Tout masquer"
+              className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
+            >
+              Tout masquer
+            </button>
+            <button
+              onClick={() => onUpdateFog({ fog_revealed: Array.from({ length: FOG_COLS * FOG_ROWS }, (_, i) => i) })}
+              title="Tout révéler"
+              className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
+            >
+              Tout révéler
+            </button>
+          </div>
+        )}
+
+        {withCamera && (
+          <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
+            <button
+              onClick={armDraw}
+              className={`px-2 py-1 rounded ${drawArmed ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}
+            >
+              ✏️ Dessiner
+            </button>
+            {drawArmed && (
+              <input
+                type="color"
+                value={drawColor}
+                onChange={(e) => setDrawColor(e.target.value)}
+                className="w-7 h-7 rounded border border-[var(--border)]"
+              />
+            )}
+            {board.drawings?.length > 0 && (
+              <>
+                <button onClick={onUndoDrawing} title="Annuler le dernier trait" className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">
+                  ↩︎
+                </button>
+                <button onClick={onClearDrawings} title="Tout effacer" className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">
+                  🗑️
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {withCamera && board.handout_url && (
+          <div className="flex items-center gap-1.5 px-2 py-1 text-sm border border-[var(--border)] rounded">
+            <span>🖼️ Document affiché</span>
+            <button onClick={onHideHandout} className="px-2 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]">
+              Masquer
+            </button>
+          </div>
         )}
 
         <button
@@ -425,6 +538,15 @@ export default function BoardEditor({
                       suppr.
                     </button>
                   </div>
+                  {withCamera && media.type === 'image' && (
+                    <button
+                      onClick={() => onShowHandout(media.url)}
+                      title="Montrer cette image en plein écran aux joueurs (pas comme fond du plateau)"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
+                    >
+                      👁️ Montrer aux joueurs
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -572,6 +694,13 @@ export default function BoardEditor({
           pingMode={pingArmed}
           onPing={(x, y) => { onPing(x, y); setPingArmed(false); }}
           pings={pings}
+          fogMode={fogPaintArmed}
+          fogBrushMode={fogBrushMode}
+          fogBrushRadius={fogBrushRadius}
+          onFogPaint={handleFogPaint}
+          drawMode={drawArmed}
+          drawColor={drawColor}
+          onDraw={onDraw}
         />
 
         {/* Always rendered at a fixed width (not conditionally mounted) — otherwise the board's

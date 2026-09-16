@@ -15,6 +15,7 @@ import {
   getBoardStreamUrl, getCampaign, getCampaignCharacters,
   getBoardMedia, uploadBoardMedia, deleteBoardMedia, updateBoardCamera, updateBoardMusic, pingBoard,
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
+  updateBoardFog, updateBoardHandout, addBoardDrawing, undoLastBoardDrawing, clearBoardDrawings,
 } from '../utils/api';
 
 export default function Board() {
@@ -28,6 +29,10 @@ export default function Board() {
   // reflecting PV/PM as they change via SSE instead of freezing at the moment it was clicked.
   const [selectedTokenId, setSelectedTokenId] = useState(null);
   const [pings, addPing] = usePings();
+  // Player-side drawing (GM has its own armed/color state inside BoardEditor.jsx — this page's
+  // read-only branch has no such wrapper, so it owns the same two bits directly).
+  const [playerDrawArmed, setPlayerDrawArmed] = useState(false);
+  const [playerDrawColor, setPlayerDrawColor] = useState('#2563eb');
 
   useEffect(() => {
     (async () => {
@@ -122,6 +127,50 @@ export default function Board() {
   const handleTokenStatusIconsChange = async (token, icons) => {
     try {
       setBoard(await updateBoardToken(token.id, { status_icons: icons }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleUpdateFog = async (data) => {
+    try {
+      setBoard(await updateBoardFog(campaignId, data));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleShowHandout = async (url) => {
+    try {
+      setBoard(await updateBoardHandout(campaignId, url));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleHideHandout = () => handleShowHandout('');
+
+  // Any campaign member can draw (see board.js's POST /board/drawings) — this same handler is
+  // wired to both the GM's BoardEditor and the player's own draw toggle below.
+  const handleDraw = async (points, color) => {
+    try {
+      setBoard(await addBoardDrawing(campaignId, points, color));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleUndoDrawing = async () => {
+    try {
+      setBoard(await undoLastBoardDrawing(campaignId));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleClearDrawings = async () => {
+    try {
+      setBoard(await clearBoardDrawings(campaignId));
     } catch (error) {
       toast.error(error.message);
     }
@@ -380,6 +429,12 @@ export default function Board() {
           onTokenStatusIconsChange={handleTokenStatusIconsChange}
           onPing={handlePing}
           pings={pings}
+          onUpdateFog={handleUpdateFog}
+          onShowHandout={handleShowHandout}
+          onHideHandout={handleHideHandout}
+          onDraw={handleDraw}
+          onUndoDrawing={handleUndoDrawing}
+          onClearDrawings={handleClearDrawings}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}
@@ -404,6 +459,24 @@ export default function Board() {
         // toggled it on (BoardEditor's checkbox) — most sessions have no active combat.
         <div className="flex flex-col gap-3">
           {board.initiative_visible && <InitiativeTracker board={board} />}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPlayerDrawArmed((v) => !v)}
+              className={`px-3 py-1.5 text-sm rounded-lg border hover:border-[var(--accent)] ${
+                playerDrawArmed ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
+              }`}
+            >
+              ✏️ Dessiner
+            </button>
+            {playerDrawArmed && (
+              <input
+                type="color"
+                value={playerDrawColor}
+                onChange={(e) => setPlayerDrawColor(e.target.value)}
+                className="w-8 h-8 rounded border border-[var(--border)]"
+              />
+            )}
+          </div>
           <div className="flex flex-col lg:flex-row gap-4">
             <BoardCanvas
               board={board}
@@ -415,6 +488,9 @@ export default function Board() {
               onSelectToken={(token) => setSelectedTokenId(token.id)}
               onBackgroundClick={() => setSelectedTokenId(null)}
               pings={pings}
+              drawMode={playerDrawArmed}
+              drawColor={playerDrawColor}
+              onDraw={handleDraw}
             />
             <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
               {selectedToken?.character_id ? (

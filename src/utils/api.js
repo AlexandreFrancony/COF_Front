@@ -239,6 +239,20 @@ export const updateBoardTokenSize = (campaignId, delta) =>
 // Transient — nothing to read back, the response is a bare 204.
 export const pingBoard = (campaignId, x, y) =>
   request(`/campaigns/${campaignId}/board/ping`, { method: 'POST', body: JSON.stringify({ x, y }) });
+// data: { fog_enabled, fog_revealed } — fog_revealed is always the full array, computed
+// client-side off the board already in hand (same one-shot-on-release pattern as a token drag).
+export const updateBoardFog = (campaignId, data) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify(data) });
+// handout_url: '' clears it (an actual null is a no-op server-side, same as background_url).
+export const updateBoardHandout = (campaignId, handoutUrl) =>
+  request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ handout_url: handoutUrl }) });
+// Any campaign member (GM or player) can add a stroke; only the GM can erase.
+export const addBoardDrawing = (campaignId, points, color) =>
+  request(`/campaigns/${campaignId}/board/drawings`, { method: 'POST', body: JSON.stringify({ points, color }) });
+export const undoLastBoardDrawing = (campaignId) =>
+  request(`/campaigns/${campaignId}/board/drawings/last`, { method: 'DELETE' });
+export const clearBoardDrawings = (campaignId) =>
+  request(`/campaigns/${campaignId}/board/drawings`, { method: 'DELETE' });
 export const setBoardInitiativeVisible = (campaignId, visible) =>
   request(`/campaigns/${campaignId}/board`, { method: 'PATCH', body: JSON.stringify({ initiative_visible: visible }) });
 export const nextInitiativeTurn = (campaignId) =>

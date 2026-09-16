@@ -1,9 +1,15 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 // The board area's aspect ratio; background-size/shape percentages are relative to width and
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
 // a visual square/circle instead of a stretched ellipse.
 export const BOARD_ASPECT_RATIO = 16 / 9;
+
+// Fog of war's own grid — independent from the tactical grid_size the GM sets for movement, and
+// never adjustable: fine enough for a paintbrush without needing a real bitmap. 40 cols x 23
+// rows renders as near-square cells at 16:9 (close enough for a brush, no need to be exact).
+export const FOG_COLS = 40;
+export const FOG_ROWS = 23;
 
 export function gridBackgroundStyle(gridSize) {
   const cell = 100 / gridSize;
@@ -58,6 +64,207 @@ function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
   };
 
   return { ref, handlePointerDown };
+}
+
+// A brush touches a small neighborhood of cells around the pointer, not just the exact one under
+// it — a single-cell brush would make revealing an actual room tediously slow. radius 1 means
+// "just this cell", 2 means a 3x3 block, etc.
+function cellsNearPointer(col, row, radius) {
+  const cells = [];
+  for (let dr = -(radius - 1); dr <= radius - 1; dr++) {
+    for (let dc = -(radius - 1); dc <= radius - 1; dc++) {
+      const r = row + dr, c = col + dc;
+      if (r >= 0 && r < FOG_ROWS && c >= 0 && c < FOG_COLS) cells.push(r * FOG_COLS + c);
+    }
+  }
+  return cells;
+}
+
+// Fog painting: tracks cells touched during one continuous drag purely client-side (no request
+// per cell — see board.js's PATCH docstring), rendering them immediately via `pending` so the
+// brush feels responsive, then reports the full touched set once on release for the caller to
+// merge into fog_revealed and persist. Mirrors usePositionDrag's own "report once, on pointerup"
+// shape, but paints a set of cells instead of dragging one marker.
+function useFogPaint(editable, brushRadius, onCommit) {
+  const containerRef = useRef(null);
+  const [pending, setPending] = useState(() => new Set());
+  const touchedRef = useRef(new Set());
+
+  const paintAt = (clientX, clientY) => {
+    const rect = containerRef.current.getBoundingClientRect();
+    const col = Math.floor(((clientX - rect.left) / rect.width) * FOG_COLS);
+    const row = Math.floor(((clientY - rect.top) / rect.height) * FOG_ROWS);
+    let changed = false;
+    for (const idx of cellsNearPointer(col, row, brushRadius)) {
+      if (!touchedRef.current.has(idx)) {
+        touchedRef.current.add(idx);
+        changed = true;
+      }
+    }
+    if (changed) setPending(new Set(touchedRef.current));
+  };
+
+  const handlePointerDown = (e) => {
+    if (!editable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    touchedRef.current = new Set();
+    paintAt(e.clientX, e.clientY);
+
+    const move = (ev) => paintAt(ev.clientX, ev.clientY);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (touchedRef.current.size > 0) onCommit([...touchedRef.current]);
+      touchedRef.current = new Set();
+      setPending(new Set());
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return { containerRef, pending, handlePointerDown };
+}
+
+// Renders only the UNREVEALED cells (a revealed one has literally no element — nothing to draw),
+// so the DOM shrinks as the GM reveals more of the map instead of growing. `ghost` is the GM's
+// own view: semi-transparent, since they still need to see what they're painting over; everyone
+// else gets a fully opaque cell, hiding the scene (and any token standing on it) completely.
+// Only captures pointer events while `editable` (the GM armed the paint brush) — otherwise clicks
+// pass straight through to whatever pawn/zone is underneath, same as if this layer didn't exist.
+function FogLayer({ board, isGm, editable, brushMode, brushRadius, onPaint }) {
+  const revealed = useMemo(() => new Set(board.fog_revealed || []), [board.fog_revealed]);
+  const { containerRef, pending, handlePointerDown } = useFogPaint(editable, brushRadius, (cells) => onPaint(cells, brushMode));
+  const ghost = isGm;
+
+  const cells = [];
+  for (let row = 0; row < FOG_ROWS; row++) {
+    for (let col = 0; col < FOG_COLS; col++) {
+      const idx = row * FOG_COLS + col;
+      // A cell touched during the current drag previews what release will actually do (cleared
+      // for 'reveal', covered for 'hide'); everything else keeps its current persisted state —
+      // switching brush mode must never itself change how untouched cells look.
+      const isPending = pending.has(idx);
+      const covered = isPending ? brushMode === 'hide' : !revealed.has(idx);
+      if (!covered) continue;
+      cells.push(
+        <div
+          key={idx}
+          style={{
+            position: 'absolute',
+            left: `${(col / FOG_COLS) * 100}%`, top: `${(row / FOG_ROWS) * 100}%`,
+            width: `${100 / FOG_COLS}%`, height: `${100 / FOG_ROWS}%`,
+            background: ghost ? 'rgba(0,0,0,0.55)' : '#000',
+          }}
+        />
+      );
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      onPointerDown={handlePointerDown}
+      className="absolute inset-0 z-[15]"
+      style={{ pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'crosshair' : undefined }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {cells}
+    </div>
+  );
+}
+
+// Freehand drawing: same "track locally while dragging, report once on release" shape as
+// useFogPaint, but the caller (BoardEditor.jsx / Board.jsx's player view) persists the finished
+// stroke itself (POST /board/drawings) rather than merging into a larger object — a stroke never
+// needs to know about any other stroke.
+function useDrawPaint(editable, color, onCommit) {
+  const containerRef = useRef(null);
+  const [livePoints, setLivePoints] = useState(null);
+  const pointsRef = useRef([]);
+
+  const handlePointerDown = (e) => {
+    if (!editable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = containerRef.current.getBoundingClientRect();
+    const toPoint = (ev) => ({
+      x: ((ev.clientX - rect.left) / rect.width) * 100,
+      y: ((ev.clientY - rect.top) / rect.height) * 100,
+    });
+    pointsRef.current = [toPoint(e)];
+    setLivePoints(pointsRef.current);
+
+    const move = (ev) => {
+      pointsRef.current = [...pointsRef.current, toPoint(ev)];
+      setLivePoints(pointsRef.current);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (pointsRef.current.length >= 2) onCommit(pointsRef.current, color);
+      pointsRef.current = [];
+      setLivePoints(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return { containerRef, livePoints, handlePointerDown };
+}
+
+// Renders every already-committed stroke (board.drawings — everyone gets the same array, GM or
+// player) plus, while `editable`, the in-progress one as it's drawn. viewBox 0 0 100 100 makes
+// the 0-100 scene coordinates map directly to SVG user units, so a stroke drawn at the GM's full
+// scene scale still lines up correctly once the projector's cameraCrop transform is applied to
+// this same SVG (it lives inside the cropped scene container, not layered on top of it).
+function DrawingLayer({ drawings, editable, color, onDraw }) {
+  const { containerRef, livePoints, handlePointerDown } = useDrawPaint(editable, color, onDraw);
+
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      className="absolute inset-0 z-20 w-full h-full"
+      style={{ pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'crosshair' : undefined }}
+      ref={containerRef}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {(drawings || []).map((stroke, i) => (
+        <polyline
+          key={i}
+          points={stroke.points.map((p) => `${p.x},${p.y}`).join(' ')}
+          fill="none"
+          stroke={stroke.color || '#ef4444'}
+          strokeWidth={0.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+      {livePoints?.length > 1 && (
+        <polyline
+          points={livePoints.map((p) => `${p.x},${p.y}`).join(' ')}
+          fill="none"
+          stroke={color}
+          strokeWidth={0.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.85}
+        />
+      )}
+    </svg>
+  );
+}
+
+// A single image shown full-screen over the scene — a letter, an NPC portrait, a map excerpt —
+// on the player/projector views only (the caller never renders this for the GM's own canvas, so
+// their working view of the live map is never interrupted by what they're currently showing).
+function HandoutOverlay({ url }) {
+  return (
+    <div className="absolute inset-0 z-[45] bg-black flex items-center justify-center">
+      <img src={url} alt="" className="max-w-full max-h-full object-contain" />
+    </div>
+  );
 }
 
 // A pawn's own image_url (set directly on the token, e.g. a free-floating PNJ) always wins;
@@ -465,6 +672,8 @@ export default function BoardCanvas({
   showCameraFrame = false, cameraSelected = false, onSelectCamera = () => {}, onCameraDragEnd = () => {},
   onCameraResizeEnd = () => {},
   pings = [], pingMode = false, onPing = () => {},
+  fogMode = false, fogBrushMode = 'reveal', fogBrushRadius = 2, onFogPaint = () => {},
+  drawMode = false, drawColor = '#ef4444', onDraw = () => {},
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
@@ -545,8 +754,23 @@ export default function BoardCanvas({
             size={board.token_size || 40}
           />
         ))}
+        {board.fog_enabled && (
+          <FogLayer
+            board={board}
+            isGm={isGm}
+            editable={isGm && fogMode}
+            brushMode={fogBrushMode}
+            brushRadius={fogBrushRadius}
+            onPaint={onFogPaint}
+          />
+        )}
+        {(board.drawings?.length > 0 || drawMode) && (
+          <DrawingLayer drawings={board.drawings} editable={drawMode} color={drawColor} onDraw={onDraw} />
+        )}
         {pings.map((ping) => <Ping key={ping.id} x={ping.x} y={ping.y} />)}
       </div>
+
+      {!isGm && board.handout_url && <HandoutOverlay url={board.handout_url} />}
 
       {showCameraFrame && (
         <CameraFrame
