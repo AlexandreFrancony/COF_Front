@@ -1,13 +1,24 @@
-// Turn order is never stored — it's whoever currently has a character-linked token on the
-// board, sorted by their already-computed Initiative, highest first (mirrors board.js's own
-// initiativeOrder()). Recomputing it here means a token added/removed mid-combat just slots
-// into the strip on the next render instead of the client and server list drifting apart.
+// A character-linked token uses its character's initiative; a bestiary monster pawn has no
+// character_id but carries its own monstre_initiative — a golem/plain pawn has neither and
+// never gets its own turn (it acts on its creator's turn).
+function tokenInitiative(t) {
+  return t.character_id != null ? t.initiative : t.monstre_initiative;
+}
+
+// Turn order is never stored — it's whoever currently has a character-linked or bestiary
+// monster token on the board, sorted by their already-computed initiative, highest first
+// (mirrors board.js's own initiativeOrder()). Recomputing it here means a token added/removed
+// mid-combat just slots into the strip on the next render instead of the client and server list
+// drifting apart. A hidden enemy (visible_to_players false) never reaches this component in the
+// first place for a player/projector fetch — buildBoardForRole (board.js) already filtered
+// board.tokens down to visible ones server-side — so no extra visibility check is needed here;
+// the GM's own fetch is the full board, so their tracker always includes hidden enemies too.
 function initiativeOrder(tokens) {
   return tokens
-    .filter((t) => t.character_id != null)
+    .filter((t) => t.character_id != null || t.monstre_id != null)
     // Ties break on the GM's own session "destin" d6 (higher wins), same rule as board.js's
     // own initiativeOrder() — kept in sync since both compute the same order independently.
-    .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0) || (b.destin ?? 0) - (a.destin ?? 0) || a.id - b.id);
+    .sort((a, b) => (tokenInitiative(b) ?? 0) - (tokenInitiative(a) ?? 0) || (b.destin ?? 0) - (a.destin ?? 0) || a.id - b.id);
 }
 
 import Kbd from './Kbd';
@@ -44,7 +55,7 @@ export default function InitiativeTracker({ board, isGm = false, onNext, onReset
               style={{ borderLeftColor: active ? '#fff' : t.color || '#c65d3b' }}
             >
               <span className="font-medium">{t.character_name || t.label}</span>
-              <span className="opacity-70">{t.initiative}</span>
+              <span className="opacity-70">{tokenInitiative(t)}</span>
               {t.destin != null && <span className="opacity-60 text-[10px]" title="Destin (départage l'initiative)">🎲{t.destin}</span>}
             </Tag>
           );
