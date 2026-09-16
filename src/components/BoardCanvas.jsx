@@ -74,6 +74,8 @@ function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
 function useExitingItems(items) {
   const [exiting, setExiting] = useState([]);
   const prevRef = useRef(items);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     const currentIds = new Set(items.map((i) => i.id));
@@ -82,10 +84,16 @@ function useExitingItems(items) {
     if (removed.length === 0) return;
     setExiting((prev) => [...prev, ...removed]);
     const removedIds = new Set(removed.map((i) => i.id));
-    const timer = setTimeout(() => {
+    // Deliberately no cleanup-based clearTimeout: `items` gets a new array reference on every
+    // board update this component receives (an SSE broadcast always replaces the whole board,
+    // even one triggered by an unrelated change or the actor's own echoed update), which reruns
+    // this effect far more often than there's an actual removal to diff. A cleanup tied to that
+    // rerun would cancel this timer on the very next no-op pass — which finds nothing new removed
+    // and so never reschedules it — leaving the ghost stuck forever instead of fading out once.
+    setTimeout(() => {
+      if (!mountedRef.current) return;
       setExiting((prev) => prev.filter((i) => !removedIds.has(i.id)));
     }, 250);
-    return () => clearTimeout(timer);
   }, [items]);
 
   return exiting;
