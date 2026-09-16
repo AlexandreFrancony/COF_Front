@@ -142,3 +142,13 @@ h2,
 .ping-marker {
   animation: ping-ring 1.6s ease-out forwards;
 }
+
+/* Board: the handout panel sliding in over the scene, players/projector only
+   (BoardCanvas.jsx's HandoutOverlay) — the scene behind it stays visible. */
+@keyframes handout-in {
+  0% { transform: translateX(120%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+.handout-panel {
+  animation: handout-in 0.35s ease-out;
+}

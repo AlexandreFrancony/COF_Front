@@ -257,13 +257,19 @@ function DrawingLayer({ drawings, editable, color, onDraw }) {
   );
 }
 
-// A single image shown full-screen over the scene — a letter, an NPC portrait, a map excerpt —
-// on the player/projector views only (the caller never renders this for the GM's own canvas, so
-// their working view of the live map is never interrupted by what they're currently showing).
+// A small panel that slides in from the right over the scene — a letter, an NPC portrait, a map
+// excerpt — on the player/projector views only (the caller never renders this for the GM's own
+// canvas, so their working view of the live map is never interrupted by what they're currently
+// showing). Deliberately leaves the board visible around it rather than covering the whole
+// scene, so showing a document doesn't blank out the map/tokens the players were looking at.
 function HandoutOverlay({ url }) {
   return (
-    <div className="absolute inset-0 z-[45] bg-black flex items-center justify-center">
-      <img src={url} alt="" className="max-w-full max-h-full object-contain" />
+    <div className="absolute inset-y-0 right-0 z-[45] flex items-center p-3 sm:p-5 pointer-events-none">
+      <img
+        src={url}
+        alt=""
+        className="handout-panel pointer-events-auto max-h-[85%] max-w-[55%] sm:max-w-[38%] w-auto object-contain rounded-lg border-2 border-[var(--accent)] shadow-2xl bg-[var(--bg-card)] p-1"
+      />
     </div>
   );
 }
