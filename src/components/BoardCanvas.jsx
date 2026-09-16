@@ -263,8 +263,13 @@ function DrawingLayer({ drawings, editable, color, onDraw }) {
 // showing). Deliberately leaves the board visible around it rather than covering the whole
 // scene, so showing a document doesn't blank out the map/tokens the players were looking at.
 function HandoutOverlay({ url }) {
+  // inset-0 (not inset-y-0 + right-0) so this box has a definite width up front — an
+  // absolutely-positioned flex box sized by shrink-to-fit while a child's max-width is itself
+  // a percentage is a circular calculation browsers resolve inconsistently, and it left the
+  // image floating short of the real right edge instead of flush against it. justify-end then
+  // pins the image to that edge without needing the box's own width to be "correct".
   return (
-    <div className="absolute inset-y-0 right-0 z-[45] flex items-center p-3 sm:p-5 pointer-events-none">
+    <div className="absolute inset-0 z-[45] flex items-center justify-end p-3 sm:p-5 pointer-events-none">
       <img
         src={url}
         alt=""
