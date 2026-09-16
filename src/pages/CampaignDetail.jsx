@@ -511,6 +511,7 @@ function ScenarioItem({
   };
 
   const handleToggleGrid = () => applyOrToast(updateScenario(scenario.id, { grid_visible: !(scenario.grid_visible ?? false) }));
+  const handleGridSize = (size) => applyOrToast(updateScenario(scenario.id, { grid_size: size }));
   const handleTokenSize = (delta) => applyOrToast(updateScenario(scenario.id, { token_size_delta: delta }));
 
   const handleAddToken = (label, hpMax, ownerCharacterId, monstreId) =>
@@ -551,6 +552,7 @@ function ScenarioItem({
       onPickBackground={handlePickBackground}
       onDeleteMedia={handleDeleteMedia}
       onToggleGrid={handleToggleGrid}
+      onGridSizeChange={handleGridSize}
       onTokenSize={handleTokenSize}
       onAddToken={handleAddToken}
       onAddCharacterToken={handleAddCharacterToken}

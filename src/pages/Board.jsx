@@ -206,6 +206,14 @@ export default function Board() {
     }
   };
 
+  const handleGridSize = async (size) => {
+    try {
+      setBoard(await updateBoardGrid(campaignId, { grid_size: size }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleTokenSize = async (delta) => {
     try {
       setBoard(await updateBoardTokenSize(campaignId, delta));
@@ -438,6 +446,7 @@ export default function Board() {
           onPickMusic={handlePickMusic}
           onUpdateMusic={handleUpdateMusic}
           onToggleGrid={handleToggleGrid}
+          onGridSizeChange={handleGridSize}
           onTokenSize={handleTokenSize}
           onAddToken={handleAddToken}
           onAddCharacterToken={handleAddCharacterToken}

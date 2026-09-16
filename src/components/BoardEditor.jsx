@@ -43,7 +43,7 @@ export default function BoardEditor({
   board, characters = [],
   mediaLibrary = [], onUploadBackground, onPickBackground, onDeleteMedia,
   onUploadMusic, onPickMusic, onUpdateMusic,
-  onToggleGrid, onTokenSize,
+  onToggleGrid, onGridSizeChange, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
   onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange, onTokenStatusIconsChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
@@ -77,6 +77,10 @@ export default function BoardEditor({
   const [fogBrushRadius, setFogBrushRadius] = useState(2);
   const [drawArmed, setDrawArmed] = useState(false);
   const [drawColor, setDrawColor] = useState('#ef4444');
+  // Local value while dragging the grid-size slider, committed to the API only on release —
+  // same "report once" reasoning as usePositionDrag/useFogPaint, so a fast drag doesn't fire a
+  // PATCH per step (and risk an earlier in-flight response clobbering a later one).
+  const [liveGridSize, setLiveGridSize] = useState(null);
 
   // Only one pointer-capturing mode at a time — arming a second one while another is active
   // would leave two overlays fighting over the same clicks, so picking one always clears the
@@ -552,6 +556,24 @@ export default function BoardEditor({
           >
             {board.grid_visible ? 'Masquer la grille' : 'Afficher la grille'}<Kbd>G</Kbd>
           </button>
+
+          {board.grid_visible && (
+            <div className="flex items-center gap-1.5 px-2 text-sm border border-[var(--border)] rounded">
+              <span className="text-[var(--text-secondary)]">Cases</span>
+              <input
+                type="range"
+                min="6"
+                max="60"
+                value={liveGridSize ?? board.grid_size ?? 20}
+                onChange={(e) => setLiveGridSize(Number(e.target.value))}
+                onMouseUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+                onTouchEnd={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+                onKeyUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+                className="w-24"
+              />
+              <span className="w-6 text-right">{liveGridSize ?? board.grid_size ?? 20}</span>
+            </div>
+          )}
 
           {withCamera && (
             <label className="flex items-center gap-1.5 text-sm px-1">
