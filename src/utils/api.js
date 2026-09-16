@@ -188,6 +188,29 @@ export const deleteArme = (id) => request(`/rules/armes/${id}`, { method: 'DELET
 // reference page rather than the picker itself.
 export const getMonstres = (search) => request(`/rules/monstres${search ? `?search=${encodeURIComponent(search)}` : ''}`);
 export const getMonstreCapacites = () => request('/rules/monstre-capacites');
+export const updateMonstre = (id, data) =>
+  request(`/rules/monstres/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+// Two-step, like uploadBoardImage: sets this bestiary entry's own illustration, joined live
+// into every pawn already spawned from it — no separate per-pawn upload/snapshot.
+export async function uploadMonstreImage(id, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`${API_URL}/rules/monstres/${id}/image`, {
+    method: 'POST',
+    headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Échec de l\'envoi' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
 
 // ============================================================================
 // LIVE BOARD (phase 2)

@@ -51,13 +51,18 @@ function usePositionDrag(enabled, x, y, onDragEnd) {
 }
 
 // A pawn's own image_url (set directly on the token, e.g. a free-floating PNJ) always wins;
-// falling back to its linked character's persistent avatar_url (a real photo) when the token
-// itself has none, and finally to that character's avatar_emoji as a lightweight substitute —
-// rendered as text since there's no image to use as a CSS background-image. Plain color/no
-// avatar at all is the last resort (unchanged from before avatars existed).
+// falling back to its linked character's persistent avatar_url (a real photo), then a bestiary
+// monster's own uploaded image_url (joined live, same reasoning as its other stats — a later
+// upload reaches every pawn already spawned from that entry) when the token itself has none.
+// Failing an image entirely, falls back to an emoji: the character's own avatar_emoji, or the
+// monster's own default emoji (seeded per bestiary entry so a spawned pawn never just shows a
+// blank color circle) — rendered as text since there's no image to use as a CSS background.
+// This is purely the pawn's visual identity, never stripped from a player-role fetch even when
+// its numeric stats (hide_hp_from_players) are — a token with no face defeats the point of it
+// being on a map at all.
 export function resolveAvatar(entry) {
-  const imageUrl = entry.image_url || entry.character_avatar_url || null;
-  const emoji = !imageUrl ? entry.character_avatar_emoji || null : null;
+  const imageUrl = entry.image_url || entry.character_avatar_url || entry.monstre_image_url || null;
+  const emoji = !imageUrl ? entry.character_avatar_emoji || entry.monstre_emoji || null : null;
   return { imageUrl, emoji };
 }
 

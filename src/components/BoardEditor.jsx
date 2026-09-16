@@ -4,7 +4,7 @@ import BoardCanvas from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
-import { getMonstres } from '../utils/api';
+import { getMonstres, updateMonstre, uploadMonstreImage } from '../utils/api';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
@@ -60,6 +60,7 @@ export default function BoardEditor({
   const [monstres, setMonstres] = useState([]);
   const [showMonsterLibrary, setShowMonsterLibrary] = useState(false);
   const [monsterSearch, setMonsterSearch] = useState('');
+  const [editingMonstreId, setEditingMonstreId] = useState(null);
 
   useEffect(() => {
     getMonstres().then(setMonstres).catch((e) => toast.error(e.message));
@@ -88,6 +89,23 @@ export default function BoardEditor({
     onAddToken(monstre.name, monstre.pv, null, monstre.id);
     setShowMonsterLibrary(false);
     setMonsterSearch('');
+  };
+
+  // The bestiary is global reference data, not board state — edited in place here (rather than
+  // through a handler prop like every other panel above) since it's the same for every campaign
+  // and already fetched directly by this component, same reasoning as the fetch itself.
+  const handleMonstreEmojiBlur = (monstre, e) => {
+    const emoji = e.target.value.trim();
+    if (emoji === (monstre.emoji || '')) return;
+    updateMonstre(monstre.id, { emoji })
+      .then((updated) => setMonstres((prev) => prev.map((m) => (m.id === updated.id ? updated : m))))
+      .catch((err) => toast.error(err.message));
+  };
+
+  const handleMonstreImageUpload = (monstre, file) => {
+    uploadMonstreImage(monstre.id, file)
+      .then((updated) => setMonstres((prev) => prev.map((m) => (m.id === updated.id ? updated : m))))
+      .catch((err) => toast.error(err.message));
   };
 
   const handleBackgroundUpload = async (e) => {
@@ -340,14 +358,48 @@ export default function BoardEditor({
                 <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">{label}</h4>
                 <div className="flex flex-wrap gap-1">
                   {inCategory.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => handleAddMonstre(m)}
-                      title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}`}
-                      className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                    >
-                      + {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
-                    </button>
+                    <div key={m.id} className="flex flex-col gap-1">
+                      <div className="flex items-stretch">
+                        <button
+                          onClick={() => handleAddMonstre(m)}
+                          title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}`}
+                          className="px-2 py-1 text-xs rounded-l border border-[var(--border)] hover:border-[var(--accent)]"
+                        >
+                          + {m.emoji || '❔'} {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
+                        </button>
+                        <button
+                          onClick={() => setEditingMonstreId((id) => (id === m.id ? null : m.id))}
+                          title="Personnaliser l'emoji/l'image par défaut de ce monstre"
+                          className={`px-1.5 text-xs rounded-r border border-l-0 border-[var(--border)] hover:border-[var(--accent)] ${
+                            editingMonstreId === m.id ? 'bg-[var(--bg-input)]' : ''
+                          }`}
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                      {editingMonstreId === m.id && (
+                        <div className="flex items-center gap-1.5 px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]">
+                          <input
+                            key={m.id}
+                            type="text"
+                            maxLength={4}
+                            defaultValue={m.emoji || ''}
+                            onBlur={(e) => handleMonstreEmojiBlur(m, e)}
+                            title="Emoji par défaut"
+                            className="w-10 px-1 py-0.5 text-sm text-center rounded bg-[var(--bg-card)] border border-[var(--border)]"
+                          />
+                          <label className="px-2 py-0.5 text-[10px] rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)] whitespace-nowrap">
+                            {m.image_url ? '🖼️ Changer' : '🖼️ Image'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => e.target.files?.[0] && handleMonstreImageUpload(m, e.target.files[0])}
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

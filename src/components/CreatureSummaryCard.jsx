@@ -33,7 +33,7 @@ export default function CreatureSummaryCard({ entry }) {
           className="w-14 h-14 shrink-0 rounded-full border border-[var(--border)] bg-[var(--bg-input)] flex items-center justify-center"
           style={{ backgroundColor: entry.color || '#8a8a8a' }}
         >
-          <span style={{ fontSize: 28, lineHeight: 1 }}>{isMonstre ? '🗡️' : '🗿'}</span>
+          <span style={{ fontSize: 28, lineHeight: 1 }}>{isMonstre ? entry.monstre_emoji || '🗡️' : '🗿'}</span>
         </div>
         <div>
           <h3 className="font-semibold text-lg leading-tight">{entry.label}</h3>
