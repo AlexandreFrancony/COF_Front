@@ -228,6 +228,7 @@ function DrawingLayer({ drawings, editable, color, onDraw }) {
       className="absolute inset-0 z-20 w-full h-full"
       style={{ pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'crosshair' : undefined }}
       ref={containerRef}
+      onPointerDown={handlePointerDown}
       onClick={(e) => e.stopPropagation()}
     >
       {(drawings || []).map((stroke, i) => (
