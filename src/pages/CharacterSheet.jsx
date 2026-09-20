@@ -2045,13 +2045,23 @@ function armeOptionLabel(a) {
 // displays the equipped weapon's dice + FOR (for a contact weapon that isn't the rare
 // for_applies=false exception, e.g. Stylet) alongside the character's own attack values
 // (computed server-side but never shown anywhere on the sheet before this).
-function armeDamageDisplay(arme, character) {
+// bonus is the weapon's own magic bonus (arme_*_qualite.bonus) — COF2's core rules (p.250) are
+// explicit that a "+X" weapon adds X to both the attack roll and the damage, not just one or
+// the other, so it's appended here as its own term rather than folded silently into the dice.
+function armeDamageDisplay(arme, character, bonus = 0) {
   if (!arme) return null;
-  if (arme.category === 'contact' && arme.for_applies) {
-    const forVal = character.caracteristiques.FOR;
-    return `${arme.damage_dice} ${forVal >= 0 ? '+' : ''}${forVal} (FOR)`;
-  }
-  return arme.damage_dice;
+  const base = arme.category === 'contact' && arme.for_applies
+    ? `${arme.damage_dice} ${character.caracteristiques.FOR >= 0 ? '+' : ''}${character.caracteristiques.FOR} (FOR)`
+    : arme.damage_dice;
+  return bonus ? `${base} +${bonus} (magie)` : base;
+}
+
+// The character's own contact/distance/magique attack values (computed server-side from level/
+// carac/voies) don't know which weapon is in hand — a weapon's own magic bonus (p.250) applies
+// on top, and only to the attack type that weapon actually uses.
+function effectiveAttackValue(valeursAttaque, arme, bonus) {
+  const base = arme.category === 'distance' ? valeursAttaque?.distance : valeursAttaque?.contact;
+  return base == null ? null : base + (bonus || 0);
 }
 
 const MONNAIE_FIELDS = [
@@ -2205,6 +2215,13 @@ const WEAPON_RARITIES = [
   ['legendaire', 'Légendaire'],
 ];
 
+// Sensible starting bonus when a rarity is picked — plain +X tiers always mean exactly +X per
+// the core rules (p.250: "une épée +2 apporte un bonus de +2... à l'attaque et aux DM"), so
+// there's nothing to decide there. A légendaire item has no fixed bonus by definition (e.g.
+// Shântoun, Calice T1 p.153, starts at +1 and climbs to +2/+3 with the wielder's own level) —
+// 1 is just a starting point, left freely editable so the GM can bump it later.
+const WEAPON_RARITY_DEFAULT_BONUS = { commun: 0, plus1: 1, plus2: 2, plus3: 3, legendaire: 1 };
+
 // Purely cosmetic (see the schema comment on arme_principale_qualite) — every weapon gets a
 // rarity treatment, defaulting to "commune", rather than only magic ones standing out.
 function WeaponName({ baseName, qualite }) {
@@ -2218,7 +2235,15 @@ function WeaponName({ baseName, qualite }) {
 function WeaponQualiteEditor({ qualite, baseName, onSave, onCancel, busy }) {
   const [name, setName] = useState(qualite?.name || '');
   const [rarity, setRarity] = useState(qualite?.rarity || 'commun');
+  const [bonus, setBonus] = useState(qualite?.bonus ?? WEAPON_RARITY_DEFAULT_BONUS[qualite?.rarity || 'commun']);
   const [effects, setEffects] = useState(qualite?.effects || '');
+
+  // Only re-suggests the bonus — never overrides one the GM already dialed in by hand, so
+  // switching rarity to fix the color doesn't silently reset a legendary item's current bonus.
+  const handleRarityChange = (value) => {
+    setRarity(value);
+    if (bonus === WEAPON_RARITY_DEFAULT_BONUS[rarity]) setBonus(WEAPON_RARITY_DEFAULT_BONUS[value]);
+  };
 
   return (
     <div className="mt-1 flex flex-col gap-1.5 p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
@@ -2232,11 +2257,23 @@ function WeaponQualiteEditor({ qualite, baseName, onSave, onCancel, busy }) {
         />
         <select
           value={rarity}
-          onChange={(e) => setRarity(e.target.value)}
+          onChange={(e) => handleRarityChange(e.target.value)}
           className="px-2 py-1 text-sm rounded bg-[var(--bg-card)] border border-[var(--border)]"
         >
           {WEAPON_RARITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
+        <label className="flex items-center gap-1 text-sm">
+          Bonus
+          <input
+            type="number"
+            min="0"
+            max="10"
+            value={bonus}
+            onChange={(e) => setBonus(Math.max(0, Number(e.target.value) || 0))}
+            title="Ajouté à l'attaque et aux dégâts avec cette arme (règles de base p.250)"
+            className="w-14 px-1.5 py-1 rounded bg-[var(--bg-card)] border border-[var(--border)]"
+          />
+        </label>
       </div>
       <textarea
         placeholder="Effets (optionnel — utile surtout pour une arme légendaire unique)"
@@ -2256,7 +2293,7 @@ function WeaponQualiteEditor({ qualite, baseName, onSave, onCancel, busy }) {
         </button>
         <button
           type="button"
-          onClick={() => onSave({ name: name.trim() || null, rarity, effects: effects.trim() || null })}
+          onClick={() => onSave({ name: name.trim() || null, rarity, bonus, effects: effects.trim() || null })}
           disabled={busy}
           className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
         >
@@ -2417,25 +2454,32 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
           {[['principale', principale], ['secondaire', secondaire]].map(([slot, arme]) => {
             if (!arme) return null;
             const qualite = character[`arme_${slot}_qualite`];
+            const bonus = qualite?.bonus || 0;
+            const attackLabel = arme.category === 'distance' ? 'Attaque distance' : 'Attaque contact';
+            const attackValue = effectiveAttackValue(va, arme, bonus);
             return (
               <div key={slot}>
                 <p className="flex items-center gap-1.5 flex-wrap">
                   <WeaponName baseName={arme.name} qualite={qualite} />
-                  <span>— Dégâts : {armeDamageDisplay(arme, character)}</span>
+                  <span>
+                    — {attackLabel} : <strong>{attackValue}</strong> · Dégâts : {armeDamageDisplay(arme, character, bonus)}
+                  </span>
                   {arme.notes && <span>({arme.notes})</span>}
-                  <button
-                    type="button"
-                    onClick={() => setEditingQualiteSlot((s) => (s === slot ? null : slot))}
-                    title="Personnaliser le nom/la rareté/les effets de cette arme"
-                    className="text-[10px] underline opacity-70 hover:opacity-100"
-                  >
-                    ✏️ personnaliser
-                  </button>
+                  {isGm && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingQualiteSlot((s) => (s === slot ? null : slot))}
+                      title="Personnaliser le nom/la rareté/le bonus/les effets de cette arme"
+                      className="text-[10px] underline opacity-70 hover:opacity-100"
+                    >
+                      ✏️ personnaliser
+                    </button>
+                  )}
                 </p>
                 {qualite?.effects && (
                   <p className="mt-0.5 whitespace-pre-wrap italic">{qualite.effects}</p>
                 )}
-                {editingQualiteSlot === slot && (
+                {isGm && editingQualiteSlot === slot && (
                   <WeaponQualiteEditor
                     qualite={qualite}
                     baseName={arme.name}
@@ -2450,10 +2494,17 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
         </div>
       )}
 
-      <div className="flex gap-4 text-sm mt-3 pt-3 border-t border-[var(--border)]">
-        <span>Attaque contact <strong>{va.contact}</strong></span>
-        <span>Attaque distance <strong>{va.distance}</strong></span>
-        <span>Attaque magique <strong>{va.magique}</strong></span>
+      <div className="flex flex-col gap-1 text-sm mt-3 pt-3 border-t border-[var(--border)]">
+        <div className="flex gap-4">
+          <span>Attaque contact <strong>{va.contact}</strong></span>
+          <span>Attaque distance <strong>{va.distance}</strong></span>
+          <span>Attaque magique <strong>{va.magique}</strong></span>
+        </div>
+        {(principale || secondaire) && (
+          <p className="text-xs text-[var(--text-secondary)]">
+            Valeurs de base, sans le bonus d'une arme magique — voir le total déjà calculé pour chaque arme équipée ci-dessus.
+          </p>
+        )}
       </div>
 
       {isGm && showManage && (
