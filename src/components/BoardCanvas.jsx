@@ -378,16 +378,20 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
     // this box's flow, so their height never shifts where the avatar itself sits.
     <div
       ref={ref}
-      onPointerDown={handlePointerDown}
       onClick={(e) => {
         e.stopPropagation();
         !exiting && onSelect(token);
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${isGm && !exiting ? 'cursor-move' : 'cursor-pointer'}`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${isGm && !exiting ? '' : 'cursor-pointer'}`}
       style={{ left: `${token.x}%`, top: `${token.y}%`, width: size, height: size }}
     >
+      {/* onPointerDown (and the move cursor) live here, not on the root — dragging only
+          starts from the avatar image itself. The root still carries the ref usePositionDrag
+          reads its container from, and onClick still covers the whole pawn (image + label)
+          for selection. */}
       <div
-        className={`w-full h-full rounded-full border-2 shadow-lg bg-cover bg-center flex items-center justify-center ${
+        onPointerDown={handlePointerDown}
+        className={`w-full h-full rounded-full border-2 shadow-lg bg-cover bg-center flex items-center justify-center ${isGm && !exiting ? 'cursor-move' : ''} ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
         } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''} ${active ? 'turn-active' : ''}`}
         style={{
