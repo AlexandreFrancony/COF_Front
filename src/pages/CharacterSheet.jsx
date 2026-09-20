@@ -2224,9 +2224,13 @@ const WEAPON_RARITY_DEFAULT_BONUS = { commun: 0, plus1: 1, plus2: 2, plus3: 3, l
 
 // Purely cosmetic (see the schema comment on arme_principale_qualite) — every weapon gets a
 // rarity treatment, defaulting to "commune", rather than only magic ones standing out.
-function WeaponName({ baseName, qualite }) {
+function WeaponName({ baseName, qualite, className = '' }) {
   const rarity = qualite?.rarity || 'commun';
-  return <span className={`weapon-rarity weapon-rarity-${rarity}`}>{qualite?.name?.trim() || baseName}</span>;
+  return (
+    <span className={`weapon-rarity weapon-rarity-${rarity} ${className}`}>
+      {qualite?.name?.trim() || baseName}
+    </span>
+  );
 }
 
 // Inline name/rarity/effects editor for one weapon slot — effects is free text rather than a
@@ -2450,7 +2454,7 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
       </div>
 
       {(principale || secondaire) && (
-        <div className="mt-2 flex flex-col gap-2 text-xs text-[var(--text-secondary)]">
+        <div className="mt-2 flex flex-col gap-3">
           {[['principale', principale], ['secondaire', secondaire]].map(([slot, arme]) => {
             if (!arme) return null;
             const qualite = character[`arme_${slot}_qualite`];
@@ -2459,12 +2463,8 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
             const attackValue = effectiveAttackValue(va, arme, bonus);
             return (
               <div key={slot}>
-                <p className="flex items-center gap-1.5 flex-wrap">
-                  <WeaponName baseName={arme.name} qualite={qualite} />
-                  <span>
-                    — {attackLabel} : <strong>{attackValue}</strong> · Dégâts : {armeDamageDisplay(arme, character, bonus)}
-                  </span>
-                  {arme.notes && <span>({arme.notes})</span>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <WeaponName baseName={arme.name} qualite={qualite} className="text-lg" />
                   {isGm && (
                     <button
                       type="button"
@@ -2475,9 +2475,13 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
                       ✏️ personnaliser
                     </button>
                   )}
+                </div>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  {attackLabel} : <strong>{attackValue}</strong> · Dégâts : {armeDamageDisplay(arme, character, bonus)}
+                  {arme.notes && <span> ({arme.notes})</span>}
                 </p>
                 {qualite?.effects && (
-                  <p className="mt-0.5 whitespace-pre-wrap italic">{qualite.effects}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-secondary)] whitespace-pre-wrap italic">{qualite.effects}</p>
                 )}
                 {isGm && editingQualiteSlot === slot && (
                   <WeaponQualiteEditor
