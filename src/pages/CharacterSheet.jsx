@@ -2197,6 +2197,76 @@ function EquipementCard({ character, onRefresh }) {
   );
 }
 
+const WEAPON_RARITIES = [
+  ['commun', 'Commune'],
+  ['plus1', '+1'],
+  ['plus2', '+2'],
+  ['plus3', '+3'],
+  ['legendaire', 'Légendaire'],
+];
+
+// Purely cosmetic (see the schema comment on arme_principale_qualite) — every weapon gets a
+// rarity treatment, defaulting to "commune", rather than only magic ones standing out.
+function WeaponName({ baseName, qualite }) {
+  const rarity = qualite?.rarity || 'commun';
+  return <span className={`weapon-rarity weapon-rarity-${rarity}`}>{qualite?.name?.trim() || baseName}</span>;
+}
+
+// Inline name/rarity/effects editor for one weapon slot — effects is free text rather than a
+// mechanical field because a named magic item's rules (Shântoun, Calice T1 p.153) don't fit
+// any fixed shape, and most of the time there's nothing to say beyond "it's a +1 sword".
+function WeaponQualiteEditor({ qualite, baseName, onSave, onCancel, busy }) {
+  const [name, setName] = useState(qualite?.name || '');
+  const [rarity, setRarity] = useState(qualite?.rarity || 'commun');
+  const [effects, setEffects] = useState(qualite?.effects || '');
+
+  return (
+    <div className="mt-1 flex flex-col gap-1.5 p-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border)]">
+      <div className="flex flex-wrap gap-1.5">
+        <input
+          type="text"
+          placeholder={baseName}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="flex-1 min-w-[120px] px-2 py-1 text-sm rounded bg-[var(--bg-card)] border border-[var(--border)]"
+        />
+        <select
+          value={rarity}
+          onChange={(e) => setRarity(e.target.value)}
+          className="px-2 py-1 text-sm rounded bg-[var(--bg-card)] border border-[var(--border)]"
+        >
+          {WEAPON_RARITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </div>
+      <textarea
+        placeholder="Effets (optionnel — utile surtout pour une arme légendaire unique)"
+        value={effects}
+        onChange={(e) => setEffects(e.target.value)}
+        rows={3}
+        className="px-2 py-1 text-sm rounded bg-[var(--bg-card)] border border-[var(--border)] resize-y"
+      />
+      <div className="flex gap-1.5 justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
+        >
+          Annuler
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave({ name: name.trim() || null, rarity, effects: effects.trim() || null })}
+          disabled={busy}
+          className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+        >
+          Enregistrer
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // A character can wield up to two weapons (principale/secondaire — dual-wielding etc.,
 // unenforced) from the shared library (p.182-184). Anyone with access (owner or GM) can
 // (un)equip either slot; only the GM curates the library itself.
@@ -2211,6 +2281,7 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
   const [newForApplies, setNewForApplies] = useState(true);
   const [newNotes, setNewNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editingQualiteSlot, setEditingQualiteSlot] = useState(null); // 'principale' | 'secondaire' | null
 
   const principale = armes.find((a) => a.id === character.arme_principale_id);
   const secondaire = armes.find((a) => a.id === character.arme_secondaire_id);
@@ -2221,6 +2292,19 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
     try {
       await updateCharacter(character.id, { [field]: value ? Number(value) : null });
       await onRefresh();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveQualite = async (slot, qualite) => {
+    setBusy(true);
+    try {
+      await updateCharacter(character.id, { [`arme_${slot}_qualite`]: qualite });
+      await onRefresh();
+      setEditingQualiteSlot(null);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -2329,19 +2413,40 @@ function ArmeSelector({ character, armes, isGm, onArmesChange, onRefresh }) {
       </div>
 
       {(principale || secondaire) && (
-        <div className="mt-2 flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-          {principale && (
-            <p>
-              <strong>{principale.name}</strong> — Dégâts : {armeDamageDisplay(principale, character)}
-              {principale.notes && <span> ({principale.notes})</span>}
-            </p>
-          )}
-          {secondaire && (
-            <p>
-              <strong>{secondaire.name}</strong> — Dégâts : {armeDamageDisplay(secondaire, character)}
-              {secondaire.notes && <span> ({secondaire.notes})</span>}
-            </p>
-          )}
+        <div className="mt-2 flex flex-col gap-2 text-xs text-[var(--text-secondary)]">
+          {[['principale', principale], ['secondaire', secondaire]].map(([slot, arme]) => {
+            if (!arme) return null;
+            const qualite = character[`arme_${slot}_qualite`];
+            return (
+              <div key={slot}>
+                <p className="flex items-center gap-1.5 flex-wrap">
+                  <WeaponName baseName={arme.name} qualite={qualite} />
+                  <span>— Dégâts : {armeDamageDisplay(arme, character)}</span>
+                  {arme.notes && <span>({arme.notes})</span>}
+                  <button
+                    type="button"
+                    onClick={() => setEditingQualiteSlot((s) => (s === slot ? null : slot))}
+                    title="Personnaliser le nom/la rareté/les effets de cette arme"
+                    className="text-[10px] underline opacity-70 hover:opacity-100"
+                  >
+                    ✏️ personnaliser
+                  </button>
+                </p>
+                {qualite?.effects && (
+                  <p className="mt-0.5 whitespace-pre-wrap italic">{qualite.effects}</p>
+                )}
+                {editingQualiteSlot === slot && (
+                  <WeaponQualiteEditor
+                    qualite={qualite}
+                    baseName={arme.name}
+                    busy={busy}
+                    onCancel={() => setEditingQualiteSlot(null)}
+                    onSave={(next) => handleSaveQualite(slot, next)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
