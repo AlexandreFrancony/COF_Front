@@ -13,7 +13,29 @@ const ZONE_SHAPES = [
   ['rectangle', 'Ligne / rectangle'],
 ];
 
-const MONSTRE_CATEGORY_LABELS = { humanoide: 'Humanoïdes', animal: 'Animaux', fantastique: 'Créatures fantastiques' };
+const MONSTRE_CATEGORY_LABELS = {
+  humanoide: 'Humanoïdes', animal: 'Animaux', fantastique: 'Créatures fantastiques',
+  calice_ch2: 'Calice Chapitre 2',
+};
+
+// Spreads N freshly-spawned pawns around a center point in a rough grid instead of stacking
+// them exactly on top of each other (they'd otherwise all land on the same default 50/50 spot
+// and hide behind one another until the GM drags each one apart by hand). Clamped to stay
+// inside the board (5-95%) even for a largeish group.
+function spreadPositions(n, centerX = 50, centerY = 50, spacing = 7) {
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const positions = [];
+  for (let i = 0; i < n; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    positions.push({
+      x: Math.min(95, Math.max(5, centerX + (col - (cols - 1) / 2) * spacing)),
+      y: Math.min(95, Math.max(5, centerY + (row - (rows - 1) / 2) * spacing)),
+    });
+  }
+  return positions;
+}
 
 // A handful of common COF2 combat conditions, not an exhaustive list — the free-text field next
 // to these covers anything else. Toggle presence in the selected token's own status_icons array.
@@ -141,6 +163,7 @@ export default function BoardEditor({
   const [showMonsterLibrary, setShowMonsterLibrary] = useState(false);
   const [monsterSearch, setMonsterSearch] = useState('');
   const [editingMonstreId, setEditingMonstreId] = useState(null);
+  const [monsterQuantity, setMonsterQuantity] = useState(1);
 
   useEffect(() => {
     getMonstres().then(setMonstres).catch((e) => toast.error(e.message));
@@ -169,10 +192,17 @@ export default function BoardEditor({
   };
 
   // Unlike the golem shortcut, a bestiary monster's stats are fixed and known in advance —
-  // nothing ambiguous to adjust before creating, so this creates the pawn directly instead of
-  // pre-filling the form for the GM to tweak.
-  const handleAddMonstre = (monstre) => {
-    onAddToken(monstre.name, monstre.pv, null, monstre.id);
+  // nothing ambiguous to adjust before creating, so this creates the pawn(s) directly instead
+  // of pre-filling the form for the GM to tweak. Sequential (not Promise.all): each onAddToken
+  // call's response is a full board snapshot that becomes the caller's new state, so firing
+  // them in parallel risks an earlier response landing after a later one and wiping out
+  // whichever pawn it hadn't seen yet.
+  const handleAddMonstre = async (monstre) => {
+    const positions = spreadPositions(monsterQuantity);
+    for (let i = 0; i < positions.length; i++) {
+      const label = monsterQuantity > 1 ? `${monstre.name} ${i + 1}` : monstre.name;
+      await onAddToken(label, monstre.pv, null, monstre.id, positions[i].x, positions[i].y);
+    }
     setShowMonsterLibrary(false);
     setMonsterSearch('');
   };
@@ -831,15 +861,28 @@ export default function BoardEditor({
 
       {showMonsterLibrary && (
         <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-semibold text-sm">🗡️ Bibliothèque d'ennemis</h3>
-            <input
-              type="text"
-              placeholder="Rechercher (ex: gobelin, ours...)"
-              value={monsterSearch}
-              onChange={(e) => setMonsterSearch(e.target.value)}
-              className="px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-            />
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                Quantité
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={monsterQuantity}
+                  onChange={(e) => setMonsterQuantity(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                  className="w-14 px-1.5 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+                />
+              </label>
+              <input
+                type="text"
+                placeholder="Rechercher (ex: gobelin, ours...)"
+                value={monsterSearch}
+                onChange={(e) => setMonsterSearch(e.target.value)}
+                className="px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+              />
+            </div>
           </div>
           {Object.entries(MONSTRE_CATEGORY_LABELS).map(([cat, label]) => {
             const inCategory = monstres.filter((m) => m.category === cat
@@ -854,10 +897,11 @@ export default function BoardEditor({
                       <div className="flex items-stretch">
                         <button
                           onClick={() => handleAddMonstre(m)}
-                          title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}`}
+                          title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}${monsterQuantity > 1 ? ` · ajoute ${monsterQuantity} pions` : ''}`}
                           className="px-2 py-1 text-xs rounded-l border border-[var(--border)] hover:border-[var(--accent)]"
                         >
                           + {m.emoji || '❔'} {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
+                          {monsterQuantity > 1 && <span className="text-[var(--accent)]"> ×{monsterQuantity}</span>}
                         </button>
                         <button
                           onClick={() => setEditingMonstreId((id) => (id === m.id ? null : m.id))}
