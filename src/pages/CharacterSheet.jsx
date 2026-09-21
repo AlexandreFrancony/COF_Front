@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
-  levelUpCharacter, orphanExchange, getArmures, createArmure, deleteArmure,
+  levelUpCharacter, orphanExchange, setPlannedVoies, getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme, uploadCharacterAvatar, getCharacterStreamUrl,
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
@@ -1246,6 +1246,7 @@ function StepButtonInline({ onClick, disabled }) {
 }
 
 function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
+  const { isGm } = useAuth();
   const [busy, setBusy] = useState(false);
   const [customVoies, setCustomVoies] = useState([]);
   const [allProfilVoies, setAllProfilVoies] = useState([]);
@@ -1305,6 +1306,15 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
     </Card>
   );
 
+  // Roadmap MJ (character_planned_voies) : si renseignée, ne propose que les voies qui y
+  // figurent (tous types confondus) ; vide = comportement par défaut, aucune restriction.
+  const plannedVoieIds = new Set(character.planned_voie_ids || []);
+  const hasPlan = plannedVoieIds.size > 0;
+
+  const plannerSection = isGm && (
+    <PlannedVoiesEditor character={character} profils={profils} allProfilVoies={allProfilVoies} customVoies={customVoies} onRefresh={onRefresh} />
+  );
+
   if (points === 0) {
     return (
       <div className="flex flex-col gap-3">
@@ -1317,15 +1327,17 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
             Passer au niveau {character.level + 1}
           </StepButton>
         </Card>
+        {plannerSection}
       </div>
     );
   }
 
   const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
-  const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id));
+  const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id) && (!hasPlan || plannedVoieIds.has(v.id)));
   // origine_pj_character_id NULL = homebrew ouverte à tous ; sinon réservée au PJ visé.
   const unownedCustomVoies = customVoies.filter(
     (v) => !ownedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
+      && (!hasPlan || plannedVoieIds.has(v.id))
   );
 
   // Profil hybride (p.176) : autorisé tant qu'il reste au moins une des 5 voies du profil
@@ -1334,7 +1346,7 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
   const ownProfilOwnedCount = (character.voies || []).filter((v) => profilVoies.some((pv) => pv.id === v.voie_id)).length;
   const hybridAllowed = ownProfilOwnedCount < 5;
   const hybridVoies = hybridAllowed
-    ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id)
+    ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id && (!hasPlan || plannedVoieIds.has(v.id)))
     : [];
 
   // Grouped by profil (collapsed accordion) when browsing, or flattened across all groups when
@@ -1528,7 +1540,106 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
         </div>
       </div>
       </Card>
+      {plannerSection}
     </div>
+  );
+}
+
+function PlannedVoiesEditor({ character, profils, allProfilVoies, customVoies, onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set(character.planned_voie_ids || []));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSelected(new Set(character.planned_voie_ids || []));
+  }, [character.id, character.planned_voie_ids]);
+
+  const eligibleCustomVoies = customVoies.filter(
+    (v) => v.origine_pj_character_id == null || v.origine_pj_character_id === character.id
+  );
+
+  const byProfil = {};
+  allProfilVoies.forEach((v) => { (byProfil[v.profil_id] ??= []).push(v); });
+  const profilIds = Object.keys(byProfil).map(Number).sort((a, b) =>
+    (profils.find((p) => p.id === a)?.name || '').localeCompare(profils.find((p) => p.id === b)?.name || '')
+  );
+
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setPlannedVoies(character.id, [...selected]);
+      await onRefresh();
+      toast.success('Voies prévues enregistrées');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col gap-2">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center justify-between text-left">
+        <h2 className="font-semibold">Voies prévues (roadmap MJ)</h2>
+        <span className="text-xs text-[var(--text-secondary)]">
+          {selected.size > 0 ? `${selected.size} sélectionnée${selected.size > 1 ? 's' : ''}` : 'aucune restriction'} {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {open && (
+        <>
+          <p className="text-xs text-[var(--text-secondary)]">
+            Coche les voies que ce PJ prévoit d'investir (profil, hybride ou homebrew) pour ne proposer que
+            celles-ci en montée de niveau. Aucune coche = toutes les voies éligibles restent proposées.
+          </p>
+          {eligibleCustomVoies.length > 0 && (
+            <div>
+              <p className="text-sm mb-1">Homebrew</p>
+              <div className="flex flex-wrap gap-2">
+                {eligibleCustomVoies.map((v) => (
+                  <label key={v.id} className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-[var(--border)]">
+                    <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} />
+                    {v.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-col gap-1">
+            {profilIds.map((pid) => {
+              const items = byProfil[pid];
+              const countSelected = items.filter((v) => selected.has(v.id)).length;
+              return (
+                <details key={pid} className="rounded-lg border border-[var(--border)] overflow-hidden">
+                  <summary className="px-2 py-1.5 text-sm cursor-pointer hover:bg-[var(--bg-input)]">
+                    {profils.find((p) => p.id === pid)?.name}
+                    {countSelected > 0 && <span className="text-xs text-[var(--accent)] ml-1">({countSelected})</span>}
+                  </summary>
+                  <div className="flex flex-wrap gap-2 p-2 pt-0">
+                    {items.map((v) => (
+                      <label key={v.id} className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-[var(--border)]">
+                        <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} />
+                        {v.name}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+          <StepButton onClick={save} disabled={saving}>
+            Enregistrer
+          </StepButton>
+        </>
+      )}
+    </Card>
   );
 }
 
