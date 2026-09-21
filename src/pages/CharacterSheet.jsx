@@ -22,6 +22,12 @@ const CARAC_LABELS = {
 const CARAC_EMOJI = { AGI: '🤸', CON: '🫀', FOR: '💪', PER: '👁️', CHA: '✨', INT: '🧠', VOL: '🔥' };
 const STAT_EMOJI = { PV: '❤️', PM: '🔮', Chance: '🍀', DR: '💤', Défense: '🛡️', Initiative: '⚡' };
 
+// Mirrors characterCalculations.js's own table (p.39) — the backend is the real gate (it
+// rejects a raise that fails this check regardless), this copy only decides whether the
+// "raise this voie" button is even shown as clickable, so a player never sees an option that
+// was always going to be refused (that's exactly the confusion that led to this being added).
+const NIVEAU_REQUIS_PAR_RANG = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 7, 6: 9, 7: 11, 8: 13 };
+
 // Three fixed value arrays (p.20) the player distributes freely across the 7 caractéristiques —
 // not tied to the profil's "priorities" in any way, those are just a suggestion shown alongside.
 const CARAC_PROFILES = {
@@ -1361,16 +1367,21 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
       <div>
         <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
         <div className="flex flex-wrap gap-2">
-          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap)).map((v) => (
-            <button
-              key={v.voie_id}
-              onClick={() => run(() => raiseCharacterVoieRang(character.id, v.voie_id))}
-              disabled={busy}
-              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-            >
-              {v.name} (rang {v.rang} → {v.rang + 1})
-            </button>
-          ))}
+          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap)).map((v) => {
+            const niveauRequis = NIVEAU_REQUIS_PAR_RANG[v.rang + 1];
+            const tooLow = niveauRequis != null && character.level < niveauRequis;
+            return (
+              <button
+                key={v.voie_id}
+                onClick={() => run(() => raiseCharacterVoieRang(character.id, v.voie_id))}
+                disabled={busy || tooLow}
+                title={tooLow ? `Niveau ${niveauRequis} requis pour ce rang (actuellement niveau ${character.level})` : undefined}
+                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50 disabled:hover:border-[var(--border)]"
+              >
+                {v.name} (rang {v.rang} → {v.rang + 1}){tooLow && ` — niveau ${niveauRequis} requis`}
+              </button>
+            );
+          })}
         </div>
       </div>
 
