@@ -65,7 +65,7 @@ export default function BoardEditor({
   board, characters = [],
   mediaLibrary = [], onUploadBackground, onPickBackground, onDeleteMedia,
   onUploadMusic, onPickMusic, onUpdateMusic,
-  onToggleGrid, onGridSizeChange, onTokenSize,
+  onToggleGrid, onGridSizeChange, onToggleLabels, onTokenSize,
   onAddToken, onAddCharacterToken, onMoveToken, onToggleTokenVisible, onDeleteToken, onUploadTokenImage,
   onTokenHpChange, onToggleTokenHideHp, onTokenPlayerLabelChange, onTokenStatusIconsChange,
   onAddZone, onMoveZone, onPatchZone, onDeleteZone,
@@ -122,6 +122,9 @@ export default function BoardEditor({
       switch (e.key.toLowerCase()) {
         case 'g':
           onToggleGrid();
+          break;
+        case 'l':
+          onToggleLabels();
           break;
         case 'escape':
           setPingArmed(false);
@@ -604,6 +607,14 @@ export default function BoardEditor({
               <span className="w-6 text-right">{liveGridSize ?? board.grid_size ?? 20}</span>
             </div>
           )}
+
+          <button
+            onClick={onToggleLabels}
+            title="Cacher/montrer le nom écrit sous chaque pion — utile quand plusieurs pions se chevauchent en combat"
+            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
+          >
+            {board.labels_visible === false ? 'Afficher les noms' : 'Masquer les noms'}<Kbd>L</Kbd>
+          </button>
 
           {withCamera && (
             <label className="flex items-center gap-1.5 text-sm px-1">

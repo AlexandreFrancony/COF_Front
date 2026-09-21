@@ -360,7 +360,7 @@ export function resolveAvatar(entry) {
 // for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
 // replacement a player sees instead — a small static badge, not a bar, since there's nothing
 // numeric behind it for them.
-function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40, exiting = false }) {
+function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40, exiting = false, labelsVisible = true }) {
   const { ref, handlePointerDown } = usePositionDrag(
     isGm && !exiting, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
   );
@@ -420,9 +420,11 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
             {token.player_hp_label}
           </span>
         )}
-        <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
-          {token.label}{isGm && token.hide_hp_from_players ? ' 🙈' : ''}
-        </span>
+        {labelsVisible && (
+          <span className="mt-1 px-1.5 py-0.5 text-[10px] rounded bg-black/60 text-white whitespace-nowrap">
+            {token.label}{isGm && token.hide_hp_from_players ? ' 🙈' : ''}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -854,6 +856,7 @@ export default function BoardCanvas({
             onDragEnd={onTokenDragEnd}
             size={board.token_size || 40}
             exiting={i >= board.tokens.length}
+            labelsVisible={board.labels_visible !== false}
           />
         ))}
         {board.fog_enabled && (

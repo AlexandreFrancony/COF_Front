@@ -214,6 +214,14 @@ export default function Board() {
     }
   };
 
+  const handleToggleLabels = async () => {
+    try {
+      setBoard(await updateBoardGrid(campaignId, { labels_visible: board.labels_visible === false }));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const handleTokenSize = async (delta) => {
     try {
       setBoard(await updateBoardTokenSize(campaignId, delta));
@@ -446,6 +454,7 @@ export default function Board() {
           onPickMusic={handlePickMusic}
           onUpdateMusic={handleUpdateMusic}
           onToggleGrid={handleToggleGrid}
+          onToggleLabels={handleToggleLabels}
           onGridSizeChange={handleGridSize}
           onTokenSize={handleTokenSize}
           onAddToken={handleAddToken}
