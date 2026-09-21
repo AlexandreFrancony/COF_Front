@@ -1323,7 +1323,10 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
 
   const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id));
-  const unownedCustomVoies = customVoies.filter((v) => !ownedVoieIds.has(v.id));
+  // origine_pj_character_id NULL = homebrew ouverte à tous ; sinon réservée au PJ visé.
+  const unownedCustomVoies = customVoies.filter(
+    (v) => !ownedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
+  );
 
   // Profil hybride (p.176) : autorisé tant qu'il reste au moins une des 5 voies du profil
   // principal jamais touchée. Le backend fait la vérification faisant foi ; ceci ne sert
