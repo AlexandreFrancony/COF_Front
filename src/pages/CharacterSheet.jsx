@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
-  levelUpCharacter, orphanExchange, setPlannedVoies, getArmures, createArmure, deleteArmure,
+  levelUpCharacter, orphanExchange, setPlannedVoies, getCapaciteChoices, resolveCapaciteChoice,
+  getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme, uploadCharacterAvatar, getCharacterStreamUrl,
 } from '../utils/api';
 import CapaciteSummary from '../components/CapaciteSummary';
@@ -197,6 +198,88 @@ function NestedCapacites({ parentCapaciteId, nestedVoiesByCapacite, level, chara
       ))}
     </ul>
   ));
+}
+
+// Some capacités (e.g. the Gnome's Don étrange, or Voie du mage's own rang 1) let the character
+// borrow one capacité from elsewhere — data-driven off rules_capacites.effect.type ===
+// 'grant_capacite_choice'. Shows a picker until resolved (a matching character_voies row with
+// nested_under_capacite_id = this capacité's id exists), then disappears — NestedCapacites takes
+// over rendering the result. Owner or GM only; free, no capacity point spent.
+function CapaciteChoiceSelector({ capacite, character, isGm, onRefresh }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  if (capacite.effect?.type !== 'grant_capacite_choice') return null;
+  const alreadyChosen = (character.voies || []).some((v) => v.nested_under_capacite_id === capacite.id);
+  if (alreadyChosen) return null;
+  if (!isGm && character.user_id !== user?.id) return null;
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    if (!options) {
+      try {
+        setOptions(await getCapaciteChoices(character.id, capacite.id));
+      } catch (e) {
+        toast.error(e.message);
+        return;
+      }
+    }
+    setOpen(true);
+  };
+
+  const choose = async (chosenId) => {
+    setBusy(true);
+    try {
+      await resolveCapaciteChoice(character.id, { granting_capacite_id: capacite.id, chosen_capacite_id: chosenId });
+      await onRefresh();
+      toast.success('Capacité choisie !');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const byGroup = {};
+  (options || []).forEach((o) => { (byGroup[o.profil_name || o.voie_name] ??= []).push(o); });
+
+  return (
+    <div className="mt-1.5 ml-3">
+      <button type="button" onClick={toggle} className="text-xs underline text-[var(--accent)]">
+        {open ? 'Fermer' : 'Choisir une capacité empruntée'}
+      </button>
+      {open && (
+        <div className="mt-1 flex flex-col gap-1">
+          {options?.length === 0 && (
+            <p className="text-xs text-[var(--text-secondary)]">Aucune option disponible.</p>
+          )}
+          {Object.entries(byGroup).map(([groupName, items]) => (
+            <details key={groupName} className="rounded border border-[var(--border)]">
+              <summary className="px-2 py-1 text-xs cursor-pointer hover:bg-[var(--bg-input)]">
+                {groupName} ({items.length})
+              </summary>
+              <div className="flex flex-wrap gap-1 p-2 pt-0">
+                {items.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => choose(o.id)}
+                    disabled={busy}
+                    title={o.resume || o.description}
+                    className="px-2 py-1 rounded border border-[var(--border)] text-xs hover:border-[var(--accent)] disabled:opacity-50"
+                  >
+                    {o.voie_name} — {o.name} (rang {o.rang})
+                  </button>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StepButton({ onClick, disabled, children, primary = true }) {
@@ -692,6 +775,7 @@ export default function CharacterSheet() {
                                 {c.est_sort && <span className="ml-1 text-xs text-[var(--accent)]">(sort)</span>}
                               </span>
                               <CapaciteSummary capacite={c} level={character.level} voieId={v.voie_id} character={character} onRefresh={refreshCharacter} />
+                              <CapaciteChoiceSelector capacite={c} character={character} isGm={isGm} onRefresh={refreshCharacter} />
                               <NestedCapacites
                                 parentCapaciteId={c.id}
                                 nestedVoiesByCapacite={nestedVoiesByCapacite}

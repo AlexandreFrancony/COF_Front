@@ -159,6 +159,10 @@ export const levelUpCharacter = (characterId) =>
   request(`/characters/${characterId}/level-up`, { method: 'POST' });
 export const setPlannedVoies = (characterId, voieIds) =>
   request(`/characters/${characterId}/planned-voies`, { method: 'PUT', body: JSON.stringify({ voie_ids: voieIds }) });
+export const getCapaciteChoices = (characterId, capaciteId) =>
+  request(`/characters/${characterId}/capacite-choices/${capaciteId}`);
+export const resolveCapaciteChoice = (characterId, data) =>
+  request(`/characters/${characterId}/capacite-choices`, { method: 'POST', body: JSON.stringify(data) });
 export const orphanExchange = (characterId, choice) =>
   request(`/characters/${characterId}/orphan-exchange`, { method: 'POST', body: JSON.stringify({ choice }) });
 
