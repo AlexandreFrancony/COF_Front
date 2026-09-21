@@ -37,12 +37,14 @@ const CARAC_PROFILES = {
   specialiste: { label: 'Spécialiste', values: [4, 2, 1, 0, 0, -1, -1] },
 };
 
-// Augustin Moëdec's homebrew schizophrenia — hardcoded to these exact voie_ids (Voie des
-// artefacts=76, Voie du métal=78 for "facette calme" · Voie de la magie destructrice=82,
-// Voie de la magie élémentaire=83 for "facette mage fou"), not a general multi-personality
-// system. Gated on character.custom_data.threshold_percent being set (only true for him),
-// so this is a no-op for every other character.
-const FACETTE_VOIE_GROUPS = { calme: [76, 78], mage: [82, 83] };
+// Augustin Moëdec's homebrew schizophrenia — hardcoded to these exact voie_ids, not a general
+// multi-personality system. Voie des artefacts (76) and Voie de transition (139) are common to
+// both facettes (never inactive, absent from both lists below on purpose); Voie du métal (78)
+// and Voie des runes (80) only under the threshold ("calme"); Voie de la magie destructrice (82)
+// and Voie de la magie élémentaire (83) only above it ("mage fou"). Gated on
+// character.custom_data.threshold_percent being set (only true for him), so this is a no-op for
+// every other character.
+const FACETTE_VOIE_GROUPS = { calme: [78, 80], mage: [82, 83] };
 
 // Facette is driven by the character's OWN current/max PM ratio (not the artefact's stored
 // reserve) — above the threshold his magic overflows and he loses himself to it ("facette
@@ -592,6 +594,11 @@ export default function CharacterSheet() {
       const nextPm = Math.min(character.pm_max, character.pm_current + artefactCurrent);
       updateCharacter(id, { pm_current: nextPm, custom_data: { artefact_reserve_current: 0 } }).then(refreshCharacter);
     };
+    // Discarding is different from using: the stored mana is simply lost, none of it comes back
+    // as PM (e.g. the artefact is emptied for a narrative reason, not to recover mana).
+    const handleArtefactDiscard = () => {
+      updateCharacter(id, { custom_data: { artefact_reserve_current: 0 } }).then(refreshCharacter);
+    };
     // From rang 3, he can pick the exact amount to withdraw (one point at a time) instead of an
     // all-or-nothing dump — no waste as long as he doesn't ask for more than fits under pm_max.
     const handleArtefactWithdraw = (delta) => {
@@ -692,6 +699,14 @@ export default function CharacterSheet() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--text-secondary)]">🏺 Réserve de l'artéfact</span>
+              <button
+                onClick={handleArtefactDiscard}
+                disabled={artefactCurrent <= 0}
+                title="Vider l'artéfact sans récupérer son mana (perdu)"
+                className="px-2 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40 text-xs"
+              >
+                Vider
+              </button>
               {transitionRang >= 3 ? (
                 <button
                   onClick={() => handleArtefactWithdraw(1)}
@@ -705,10 +720,10 @@ export default function CharacterSheet() {
                 <button
                   onClick={handleArtefactEmpty}
                   disabled={artefactCurrent <= 0}
-                  title="Vider l'artéfact d'un coup (tout ce qui dépasse le PM max est perdu)"
+                  title="Utiliser l'artéfact : vide son mana dans sa réserve de PM (tout ce qui dépasse le PM max est perdu)"
                   className="px-2 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-40 text-xs"
                 >
-                  Vider ↩
+                  Utiliser ↩
                 </button>
               )}
               <span className="font-semibold text-sm w-14 text-center">{artefactCurrent}/{artefactMax}</span>
