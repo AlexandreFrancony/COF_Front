@@ -428,15 +428,25 @@ export default function CharacterSheet() {
       });
 
       const voiesToAdd = [
-        ...selectedVoieIds.map((voieId) => ({ voieId, rangCap: null })),
-        // Replacing the peuple voie with the voie du mage freezes it at rang 1 forever (p.60).
-        ...(peupleVoie ? [{ voieId: peupleVoie.id, rangCap: replaceWithMage ? 1 : null }] : []),
-        ...(replaceWithMage && voieDuMage ? [{ voieId: voieDuMage.id, rangCap: null }] : []),
+        ...selectedVoieIds.map((voieId) => ({ voieId })),
+        // Replacing the peuple voie with the voie du mage nests it under the mage voie's rang-1
+        // capacité rather than keeping it as its own frozen section — p.60's own text says the
+        // mage "conserve les effets" of the peuple voie's rang 1, i.e. absorbs it into that
+        // capacité, the same shape as a Gnome's Don étrange borrow.
+        ...(peupleVoie ? [{
+          voieId: peupleVoie.id,
+          ...(replaceWithMage ? {
+            onlyCapaciteId: peupleVoie.capacites?.find((c) => c.rang === 1)?.id ?? null,
+            nestedUnderCapaciteId: voieDuMage?.capacites?.find((c) => c.rang === 1)?.id ?? null,
+          } : {}),
+        }] : []),
+        ...(replaceWithMage && voieDuMage ? [{ voieId: voieDuMage.id }] : []),
       ];
-      for (const { voieId, rangCap } of voiesToAdd) {
+      for (const { voieId, onlyCapaciteId = null, nestedUnderCapaciteId = null } of voiesToAdd) {
         const rang = voieId === mageBonusVoieId ? 2 : 1;
         await addCharacterVoie(id, {
-          voie_id: voieId, obtained_at_level: 1, spend_points: false, rang, rang_cap: rangCap,
+          voie_id: voieId, obtained_at_level: 1, spend_points: false, rang,
+          only_capacite_id: onlyCapaciteId, nested_under_capacite_id: nestedUnderCapaciteId,
         });
       }
 
@@ -1382,7 +1392,7 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
       <div>
         <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
         <div className="flex flex-wrap gap-2">
-          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap)).map((v) => {
+          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap) && !v.nested_under_capacite_id).map((v) => {
             const niveauRequis = NIVEAU_REQUIS_PAR_RANG[v.rang + 1];
             const tooLow = niveauRequis != null && character.level < niveauRequis;
             return (
