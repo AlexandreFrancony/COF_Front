@@ -60,11 +60,10 @@ function AugmentCard({ card, disabled, pickedCount, onPick, onRemove }) {
         title={card.lockedReason || undefined}
       >
         <div className="aug-frame">
-          {/* Keyed on the target rang: picking rang 1 with a point left to spare re-keys this
-              block for rang 2, so React remounts it fresh instead of just patching the text in
-              place — that's what lets the slide-in animation below play, as if rang 2 were
-              sliding out from behind the card rang 1 was just taken from. */}
-          <div className="aug-frame-inner aug-content-slide" key={card.rang}>
+          {/* Each card is its own rang now (a fresh entry in the list, not a mutating one), so
+              this plays automatically the moment it mounts — exactly when rang 2 first appears
+              next to the rang-1 card it was revealed from. */}
+          <div className="aug-frame-inner aug-content-slide">
             <div style={{ position: 'relative', width: 44, height: 44, marginTop: 2 }}>
               <svg width="44" height="44" viewBox="0 0 48 48" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
                 <polygon className="medallion-ring" points="24,1 47,24 24,47 1,24" fill="none" strokeWidth="1.5" />
@@ -192,49 +191,59 @@ export default function LevelUp() {
   const cards = [];
 
   // Shared builder: `info` is either a character.voies entry (has voie_id/name/icon/type) or a
-  // catalog voie (has id/name/icon/type) — both shapes carry what's needed. newSubtitle is only
-  // used the very first time (currentRang 0); once picked, the card describes its own next rang
-  // like any owned voie, same as it would after the pick is actually saved.
-  const buildVoieCard = (voieId, info, category, newSubtitle) => {
-    const currentRang = effectiveRang(voieId);
-    const targetRang = currentRang + 1;
-    // A normal voie only ever defines 5 capacités (rang 1-5) — nothing exists to unlock past
-    // that, so there's no card once it's maxed out.
-    const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === targetRang);
-    if (!capaciteExists) return null;
-    const niveauRequis = NIVEAU_REQUIS_PAR_RANG[targetRang];
-    const tooLow = niveauRequis != null && character.level < niveauRequis;
-    return {
-      key: `voie-${voieId}`, kind: 'voie', voieId, name: info.name, icon: info.icon,
-      subtitle: currentRang > 0 ? `Rang ${currentRang} → ${targetRang}` : newSubtitle,
-      category, rang: targetRang, cost: costForRang(targetRang), locked: tooLow,
-      lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
-      description: resumeFor(voieId, targetRang),
-      profilId: voieCatalog.find((v) => v.id === voieId)?.profil_id ?? null,
-    };
+  // catalog voie (has id/name/icon/type) — both shapes carry what's needed. Produces a CHAIN of
+  // cards, not one mutating card: each already-picked rang gets its own frozen card (content
+  // never changes once picked, matching what the player actually clicked), and at most one more
+  // "next rang" card is appended after it — revealed only while a point remains to spend on it,
+  // as if it slid out from behind the card that was just taken. This also means a voie simply
+  // stops producing new cards once its last real rang is picked, instead of the previous design
+  // where the one mutating card vanished the moment there was nothing further to unlock.
+  const buildVoieCardChain = (voieId, info, category, newSubtitle) => {
+    const baseRang = (character.voies || []).find((v) => v.voie_id === voieId)?.rang || 0;
+    const pickedCount = draftCountFor(voieId);
+    const chain = [];
+    for (let step = 0; step <= pickedCount; step += 1) {
+      const isPicked = step < pickedCount;
+      // Only reveal a further tier while there's still a point to spend on it — the voie's very
+      // first offer (step 0) always shows regardless, same as every other never-picked card.
+      if (!isPicked && step > 0 && effectivePoints <= 0) break;
+      const stepCurrentRang = baseRang + step;
+      const stepTargetRang = stepCurrentRang + 1;
+      const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === stepTargetRang);
+      if (!capaciteExists) break; // maxed out — no further card, picked or not
+      const niveauRequis = NIVEAU_REQUIS_PAR_RANG[stepTargetRang];
+      const tooLow = niveauRequis != null && character.level < niveauRequis;
+      chain.push({
+        key: `voie-${voieId}-r${stepTargetRang}`, kind: 'voie', voieId, name: info.name, icon: info.icon,
+        subtitle: stepCurrentRang > 0 ? `Rang ${stepCurrentRang} → ${stepTargetRang}` : newSubtitle,
+        category, rang: stepTargetRang, cost: costForRang(stepTargetRang), locked: tooLow,
+        lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
+        description: resumeFor(voieId, stepTargetRang),
+        profilId: voieCatalog.find((v) => v.id === voieId)?.profil_id ?? null,
+        picked: isPicked,
+        pickStep: step + 1,
+      });
+    }
+    return chain;
   };
 
   realRaisableVoies.forEach((v) => {
     const category = v.type === 'custom' ? 'homebrew'
       : v.type === 'peuple' || v.type === 'mage' ? 'own'
       : profilVoies.some((pv) => pv.id === v.voie_id) ? 'own' : 'hybride';
-    const card = buildVoieCard(v.voie_id, v, category, null);
-    if (card) cards.push(card);
+    cards.push(...buildVoieCardChain(v.voie_id, v, category, null));
   });
 
   unownedProfilVoies.forEach((v) => {
-    const card = buildVoieCard(v.id, v, 'own', 'Nouvelle voie, rang 1');
-    if (card) cards.push(card);
+    cards.push(...buildVoieCardChain(v.id, v, 'own', 'Nouvelle voie, rang 1'));
   });
 
   unownedCustomVoies.forEach((v) => {
-    const card = buildVoieCard(v.id, v, 'homebrew', 'Homebrew, rang 1');
-    if (card) cards.push(card);
+    cards.push(...buildVoieCardChain(v.id, v, 'homebrew', 'Homebrew, rang 1'));
   });
 
   hybridVoies.forEach((v) => {
-    const card = buildVoieCard(v.id, v, 'hybride', `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`);
-    if (card) cards.push(card);
+    cards.push(...buildVoieCardChain(v.id, v, 'hybride', `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`));
   });
 
   // Point orphelin (p.42) : réservé au cas où aucune autre capacité n'est accessible.
@@ -266,10 +275,18 @@ export default function LevelUp() {
 
   // Takes a card (from `cards`), not a draft entry directly — the checkmark badge lives on the
   // card, which is rebuilt fresh every render, so it can only ever hand back the card it knows.
+  // For a voie, removing rang N also drops every rang picked after it for that same voie (you
+  // can't keep rang 3 while un-picking rang 2, its prerequisite) — pickStep - 1 is exactly the
+  // count that leaves everything before this card intact.
   const removeDraftEntry = (card) => {
-    setDraft((prev) => prev.filter((e) => (
-      card.kind === 'orphan' ? !(e.kind === 'orphan' && e.choice === card.choice) : !(e.kind === 'voie' && e.voieId === card.voieId)
-    )));
+    setDraft((prev) => {
+      if (card.kind === 'orphan') {
+        return prev.filter((e) => !(e.kind === 'orphan' && e.choice === card.choice));
+      }
+      return prev
+        .map((e) => (e.kind === 'voie' && e.voieId === card.voieId ? { ...e, count: card.pickStep - 1 } : e))
+        .filter((e) => e.kind !== 'voie' || e.voieId !== card.voieId || e.count > 0);
+    });
   };
 
   // --- Preview: pv_max/pm_max as if the draft were committed. Best-effort (doesn't mirror
@@ -448,8 +465,8 @@ export default function LevelUp() {
                 <AugmentCard
                   key={card.key}
                   card={card}
-                  disabled={saving || (effectivePoints <= 0 && !card.locked)}
-                  pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : draftCountFor(card.voieId)}
+                  disabled={saving || card.picked || (effectivePoints <= 0 && !card.locked)}
+                  pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : (card.picked ? 1 : 0)}
                   onPick={pickCard}
                   onRemove={removeDraftEntry}
                 />
