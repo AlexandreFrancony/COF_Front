@@ -293,7 +293,10 @@ h2,
   flex-direction: column;
   align-items: center;
   gap: 7px;
-  min-height: 232px;
+  /* Fixed, not min — a longer resume text used to grow just that card, throwing off the row's
+     alignment (every neighbor still flush at the top, but bottoms staggered by ~15-40px). The
+     description gets its own scroll for the rare capacité whose text doesn't fit. */
+  height: 280px;
 }
 .aug-corner {
   position: absolute;
@@ -317,6 +320,11 @@ h2,
 .aug-sub { font-size: 9.5px; color: #9fb0c4; font-style: italic; text-align: center; }
 .aug-rule { display: flex; align-items: center; gap: 6px; width: 70%; margin: 1px 0; }
 .aug-rule::before, .aug-rule::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.18); }
-.aug-desc { font-size: 10px; color: #d9d4c6; text-align: center; line-height: 1.5; padding: 0 2px; }
+.aug-desc {
+  font-size: 10px; color: #d9d4c6; text-align: center; line-height: 1.5; padding: 0 2px;
+  /* Scrolls the rare capacité whose full resume doesn't fit, instead of growing past the card's
+     now-fixed height (min-height 0 is required for a flex child to actually shrink and scroll). */
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+}
 .aug-cost { margin-top: auto; font-size: 9.5px; color: #8a8779; font-style: italic; letter-spacing: 0.03em; }
 .aug-locked { margin-top: auto; font-size: 9px; color: #e2836a; font-weight: 700; text-align: center; line-height: 1.3; }
