@@ -274,7 +274,10 @@ h2,
   transform: translateY(-6px);
   box-shadow: 0 18px 30px rgba(60, 45, 20, 0.36);
 }
-.aug-card:has(.aug-card-btn:disabled) {
+/* Never dims an already-picked card, even once it's disabled for lacking points to stack another
+   — a card the player chose must stay as legible as the ones still open, only genuinely
+   unavailable options (locked, or no points left and never picked) grey out. */
+.aug-card:not(.aug-card--picked):has(.aug-card-btn:disabled) {
   filter: grayscale(0.7) brightness(0.92);
   opacity: 0.65;
 }

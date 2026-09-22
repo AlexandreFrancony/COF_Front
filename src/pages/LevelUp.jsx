@@ -32,7 +32,7 @@ function AugmentCard({ card, disabled, pickedCount, onPick, onRemove }) {
   const rarity = rarityFor(card.rang);
   const meta = CATEGORY_META[card.category];
   return (
-    <div className={`aug-card aug-${rarity}`}>
+    <div className={`aug-card aug-${rarity}${pickedCount > 0 ? ' aug-card--picked' : ''}`}>
       {pickedCount > 0 && (
         // A separate button, sibling to the pick button below (never nested — a button inside a
         // button is invalid HTML and the outer one being disabled would swallow the click) — so
@@ -189,11 +189,17 @@ export default function LevelUp() {
     const real = (character.voies || []).find((v) => v.voie_id === voieId);
     const currentRang = effectiveRang(voieId);
     const targetRang = currentRang + 1;
-    const niveauRequis = NIVEAU_REQUIS_PAR_RANG[targetRang];
-    const tooLow = niveauRequis != null && character.level < niveauRequis;
     // A freshly drafted (not-yet-real) voie is always findable in voieCatalog — it's exactly
     // where its "new voie" card came from in the first place.
     const voieInfo = real || voieCatalog.find((v) => v.id === voieId);
+    if (voieInfo.type === 'prestige') return; // deferred for now, never offered here
+    // A normal voie only ever defines 5 capacités (rang 1-5) — nothing exists to unlock past
+    // that, so there's no card to show once it's maxed out (prestige is the only type that goes
+    // further, and it's excluded above).
+    const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === targetRang);
+    if (!capaciteExists) return;
+    const niveauRequis = NIVEAU_REQUIS_PAR_RANG[targetRang];
+    const tooLow = niveauRequis != null && character.level < niveauRequis;
     const category = voieInfo.type === 'custom' ? 'homebrew'
       : voieInfo.type === 'peuple' || voieInfo.type === 'mage' ? 'own'
       : profilVoies.some((pv) => pv.id === voieId) ? 'own' : 'hybride';
