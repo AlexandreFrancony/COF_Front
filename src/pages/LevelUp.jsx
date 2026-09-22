@@ -204,11 +204,13 @@ export default function LevelUp() {
     const chain = [];
     for (let step = 0; step <= pickedCount; step += 1) {
       const isPicked = step < pickedCount;
-      // Only reveal a further tier while there's still a point to spend on it — the voie's very
-      // first offer (step 0) always shows regardless, same as every other never-picked card.
-      if (!isPicked && step > 0 && effectivePoints <= 0) break;
       const stepCurrentRang = baseRang + step;
       const stepTargetRang = stepCurrentRang + 1;
+      const stepCost = costForRang(stepTargetRang);
+      // Only reveal a further tier while enough points remain to actually afford it (a rang 3+
+      // step costs 2, so having exactly 1 point left isn't enough) — the voie's very first offer
+      // (step 0) always shows regardless, same as every other never-picked card.
+      if (!isPicked && step > 0 && effectivePoints < stepCost) break;
       const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === stepTargetRang);
       if (!capaciteExists) break; // maxed out — no further card, picked or not
       const niveauRequis = NIVEAU_REQUIS_PAR_RANG[stepTargetRang];
@@ -216,7 +218,7 @@ export default function LevelUp() {
       chain.push({
         key: `voie-${voieId}-r${stepTargetRang}`, kind: 'voie', voieId, name: info.name, icon: info.icon,
         subtitle: stepCurrentRang > 0 ? `Rang ${stepCurrentRang} → ${stepTargetRang}` : newSubtitle,
-        category, rang: stepTargetRang, cost: costForRang(stepTargetRang), locked: tooLow,
+        category, rang: stepTargetRang, cost: stepCost, locked: tooLow,
         lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
         description: resumeFor(voieId, stepTargetRang),
         profilId: voieCatalog.find((v) => v.id === voieId)?.profil_id ?? null,
@@ -256,7 +258,7 @@ export default function LevelUp() {
   }));
 
   const pickCard = (card) => {
-    if (card.locked || effectivePoints <= 0) return;
+    if (card.locked || effectivePoints < card.cost) return;
     setDraft((prev) => {
       const key = card.kind === 'orphan' ? `orphan-${card.choice}` : `voie-${card.voieId}`;
       const existing = prev.find((e) => (e.kind === 'orphan' ? `orphan-${e.choice}` : `voie-${e.voieId}`) === key);
@@ -491,7 +493,7 @@ export default function LevelUp() {
                 <AugmentCard
                   key={card.key}
                   card={card}
-                  disabled={saving || card.picked || (effectivePoints <= 0 && !card.locked)}
+                  disabled={saving || card.picked || (effectivePoints < card.cost && !card.locked)}
                   pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : (card.picked ? 1 : 0)}
                   onPick={pickCard}
                   onRemove={removeDraftEntry}
