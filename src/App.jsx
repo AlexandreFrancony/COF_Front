@@ -6,6 +6,7 @@ import Campaigns from './pages/Campaigns';
 import CampaignDetail from './pages/CampaignDetail';
 import InviteAccept from './pages/InviteAccept';
 import CharacterSheet from './pages/CharacterSheet';
+import LevelUp from './pages/LevelUp';
 import Board from './pages/Board';
 import BoardProjector from './pages/BoardProjector';
 import History from './pages/History';
@@ -88,6 +89,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <CharacterSheet />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/characters/:id/level-up"
+        element={
+          <ProtectedRoute>
+            <LevelUp />
           </ProtectedRoute>
         }
       />

@@ -243,3 +243,80 @@ h2,
     background-position: 50% center;
   }
 }
+
+/* ============================================================================
+   Level-up "augment" cards (LevelUp.jsx) — deliberately styled apart from the
+   Livre theme (dark card body vs. the app's cream/gold everywhere else), the
+   same way a game's loot/augment moment breaks from its own main UI chrome.
+   Rarity lives entirely on the frame (silver/gold/prismatic border gradient
+   and corner/medallion-ring color) per the book's rang tiers: 1-2, 3-4, 5.
+   ========================================================================== */
+.aug-card {
+  position: relative;
+  width: 180px;
+  border: none;
+  padding: 4px;
+  border-radius: 20px;
+  box-shadow: 0 12px 22px rgba(60, 45, 20, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.aug-card:not(:disabled):hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 30px rgba(60, 45, 20, 0.36);
+}
+.aug-card:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.7) brightness(0.92);
+  opacity: 0.65;
+}
+.aug-silver { background: linear-gradient(160deg, #f4f7fa, #8b95a3 45%, #dfe4e9); }
+.aug-gold { background: linear-gradient(160deg, #fff3cf, #a9762e 45%, #ffe3a1); }
+.aug-prismatic { background: linear-gradient(135deg, #ff9ecb, #9b8cff 35%, #7fd6ff 65%, #ffe08a); }
+.aug-silver .aug-corner { background: #dfe4e9; }
+.aug-gold .aug-corner { background: #ffe3a1; }
+.aug-prismatic .aug-corner { background: #7fd6ff; }
+.aug-silver .medallion-ring { stroke: #dfe4e9; }
+.aug-gold .medallion-ring { stroke: #ffe3a1; }
+.aug-prismatic .medallion-ring { stroke: #7fd6ff; }
+.aug-frame {
+  position: relative;
+  border-radius: 17px;
+  background: radial-gradient(circle at 50% 12%, #2c2c34 0%, #101014 70%);
+  padding: 3px;
+}
+.aug-frame-inner {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 20px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-height: 232px;
+}
+.aug-corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+.aug-title {
+  font-family: 'Cinzel', Georgia, serif;
+  color: #f4efe2;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.aug-sub { font-size: 9.5px; color: #9fb0c4; font-style: italic; text-align: center; }
+.aug-rule { display: flex; align-items: center; gap: 6px; width: 70%; margin: 1px 0; }
+.aug-rule::before, .aug-rule::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.18); }
+.aug-desc { font-size: 10px; color: #d9d4c6; text-align: center; line-height: 1.5; padding: 0 2px; }
+.aug-cost { margin-top: auto; font-size: 9.5px; color: #8a8779; font-style: italic; letter-spacing: 0.03em; }
+.aug-locked { margin-top: auto; font-size: 9px; color: #e2836a; font-weight: 700; text-align: center; line-height: 1.3; }

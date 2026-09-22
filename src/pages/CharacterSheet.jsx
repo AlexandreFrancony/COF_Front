@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
-  updateCharacter, addCharacterVoie, raiseCharacterVoieRang, setCharacterVoieRang, forgetCharacterVoie,
-  levelUpCharacter, orphanExchange, setPlannedVoies, getCapaciteChoices, resolveCapaciteChoice,
+  updateCharacter, addCharacterVoie, setCharacterVoieRang,
+  levelUpCharacter, setPlannedVoies, getCapaciteChoices, resolveCapaciteChoice,
   getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme, uploadCharacterAvatar, getCharacterStreamUrl,
 } from '../utils/api';
@@ -320,6 +320,11 @@ export default function CharacterSheet() {
   const [caracSlots, setCaracSlots] = useState({});
   const [selectedChip, setSelectedChip] = useState(null);
   const [profilVoies, setProfilVoies] = useState([]);
+  // GM-only roadmap editor (PlannedVoiesEditor) needs the full custom/profil voie catalogs —
+  // fetched once here instead of inside the level-up flow, since planning the roadmap is a prep
+  // activity independent of an active level-up.
+  const [customVoiesAll, setCustomVoiesAll] = useState([]);
+  const [allProfilVoiesAll, setAllProfilVoiesAll] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
   const [demiElfeChoices, setDemiElfeChoices] = useState(null);
   const [voieDuMage, setVoieDuMage] = useState(null);
@@ -380,6 +385,10 @@ export default function CharacterSheet() {
       getVoies({ profil_id: character.profil_id, type: 'profil' })
         .then(setProfilVoies)
         .catch((e) => toast.error(e.message));
+    }
+    if (isGm && character?.profil_id && character.pv_max > 0 && allProfilVoiesAll.length === 0) {
+      getVoies({ type: 'custom' }).then(setCustomVoiesAll).catch(() => {});
+      getVoies({ type: 'profil' }).then(setAllProfilVoiesAll).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [character]);
@@ -808,7 +817,16 @@ export default function CharacterSheet() {
               </div>
             </Card>
 
-            <LevelUpPanel character={character} profilVoies={profilVoies} profils={profils} onRefresh={refreshCharacter} />
+            <LevelUpBanner character={character} onRefresh={refreshCharacter} />
+            {isGm && (
+              <PlannedVoiesEditor
+                character={character}
+                profils={profils}
+                allProfilVoies={allProfilVoiesAll}
+                customVoies={customVoiesAll}
+                onRefresh={refreshCharacter}
+              />
+            )}
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1354,27 +1372,32 @@ function StepButtonInline({ onClick, disabled }) {
   );
 }
 
-function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
-  const { isGm } = useAuth();
+// Compact entry point to the dedicated /characters/:id/level-up page — the actual point-spending
+// UI used to live inline here (a wall of buttons easy to miss on a long sheet), which is exactly
+// what players found unclear. Advancing the level itself stays a one-click action right on the
+// sheet; only spending the resulting points moves to its own page.
+function LevelUpBanner({ character, onRefresh }) {
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [customVoies, setCustomVoies] = useState([]);
-  const [allProfilVoies, setAllProfilVoies] = useState([]);
-  const [prestigeVoies, setPrestigeVoies] = useState([]);
-  const [hybridSearch, setHybridSearch] = useState('');
-  const [openHybridProfil, setOpenHybridProfil] = useState(null);
   const points = character.capacity_points_available;
 
-  useEffect(() => {
-    getVoies({ type: 'custom' }).then(setCustomVoies).catch(() => {});
-    getVoies({ type: 'profil' }).then(setAllProfilVoies).catch(() => {});
-    getVoies({ type: 'prestige' }).then(setPrestigeVoies).catch(() => {});
-  }, []);
+  if (points > 0) {
+    return (
+      <button
+        onClick={() => navigate(`/characters/${character.id}/level-up`)}
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--accent)] text-white font-semibold hover:bg-[var(--accent-hover)] cof-plate"
+      >
+        🎉 {points} point{points > 1 ? 's' : ''} de compétence à dépenser — Monter de niveau
+      </button>
+    );
+  }
 
-  const run = async (action) => {
+  const levelUp = async () => {
     setBusy(true);
     try {
-      await action();
+      await levelUpCharacter(character.id);
       await onRefresh();
+      toast.success('Niveau supérieur !');
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -1382,275 +1405,12 @@ function LevelUpPanel({ character, profilVoies, profils, onRefresh }) {
     }
   };
 
-  // Changement d'orientation (p.42-43) : ne peut jamais descendre sous rang 1 une voie
-  // acquise gratuitement à la création — le reste peut toujours être oublié (rang le plus
-  // haut uniquement, ce qui empêche les trous dans une voie).
-  const forgets = character.forgets_available || 0;
-  const forgettableVoies = (character.voies || []).filter((v) => !(v.obtained_at_level === 1 && v.rang <= 1));
-
-  const forgetSection = forgets > 0 && (
-    <Card className="flex flex-col gap-2 border-[var(--accent)]">
-      <h2 className="font-semibold">
-        Changement d'orientation — {forgets} disponible{forgets > 1 ? 's' : ''}
-      </h2>
-      <p className="text-xs text-[var(--text-secondary)]">
-        Oublie le rang le plus haut d'une voie et récupère son coût en points de capacité.
-      </p>
-      {forgettableVoies.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {forgettableVoies.map((v) => (
-            <button
-              key={v.voie_id}
-              onClick={() => run(() => forgetCharacterVoie(character.id, v.voie_id))}
-              disabled={busy}
-              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-            >
-              Oublier {v.name} (rang {v.rang})
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-[var(--text-secondary)]">Aucune voie oubliable pour l'instant.</p>
-      )}
-    </Card>
-  );
-
-  // Roadmap MJ (character_planned_voies) : si renseignée, ne propose que les voies qui y
-  // figurent (tous types confondus) ; vide = comportement par défaut, aucune restriction.
-  const plannedVoieIds = new Set(character.planned_voie_ids || []);
-  const hasPlan = plannedVoieIds.size > 0;
-
-  const plannerSection = isGm && (
-    <PlannedVoiesEditor character={character} profils={profils} allProfilVoies={allProfilVoies} customVoies={customVoies} onRefresh={onRefresh} />
-  );
-
-  if (points === 0) {
-    return (
-      <div className="flex flex-col gap-3">
-        {forgetSection}
-        <Card>
-          <StepButton
-            onClick={() => run(() => levelUpCharacter(character.id).then(() => toast.success('Niveau supérieur !')))}
-            disabled={busy}
-          >
-            Passer au niveau {character.level + 1}
-          </StepButton>
-        </Card>
-        {plannerSection}
-      </div>
-    );
-  }
-
-  const ownedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
-  const unownedProfilVoies = profilVoies.filter((v) => !ownedVoieIds.has(v.id) && (!hasPlan || plannedVoieIds.has(v.id)));
-  // origine_pj_character_id NULL = homebrew ouverte à tous ; sinon réservée au PJ visé.
-  const unownedCustomVoies = customVoies.filter(
-    (v) => !ownedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
-      && (!hasPlan || plannedVoieIds.has(v.id))
-  );
-
-  // Profil hybride (p.176) : autorisé tant qu'il reste au moins une des 5 voies du profil
-  // principal jamais touchée. Le backend fait la vérification faisant foi ; ceci ne sert
-  // qu'à décider si la section doit s'afficher.
-  const ownProfilOwnedCount = (character.voies || []).filter((v) => profilVoies.some((pv) => pv.id === v.voie_id)).length;
-  const hybridAllowed = ownProfilOwnedCount < 5;
-  const hybridVoies = hybridAllowed
-    ? allProfilVoies.filter((v) => !ownedVoieIds.has(v.id) && v.profil_id !== character.profil_id && (!hasPlan || plannedVoieIds.has(v.id)))
-    : [];
-
-  // Grouped by profil (collapsed accordion) when browsing, or flattened across all groups when
-  // searching — with 13 profils x ~5 voies each, a flat list of every hybrid option at once is
-  // unusable.
-  const hybridByProfil = {};
-  hybridVoies.forEach((v) => { (hybridByProfil[v.profil_id] ??= []).push(v); });
-  const hybridProfilIds = Object.keys(hybridByProfil).map(Number).sort((a, b) =>
-    (profils.find((p) => p.id === a)?.name || '').localeCompare(profils.find((p) => p.id === b)?.name || '')
-  );
-  const hybridSearchLower = hybridSearch.trim().toLowerCase();
-  const hybridSearchResults = hybridSearchLower
-    ? hybridVoies.filter((v) =>
-        v.name.toLowerCase().includes(hybridSearchLower) ||
-        (profils.find((p) => p.id === v.profil_id)?.name || '').toLowerCase().includes(hybridSearchLower)
-      )
-    : null;
-
-  // Voie de prestige (p.39) : une seule par carrière, ouverte à partir de niveau_prestige_requis.
-  const hasPrestigeVoie = (character.voies || []).some((v) => v.type === 'prestige');
-  const eligiblePrestigeVoies = hasPrestigeVoie
-    ? []
-    : prestigeVoies.filter((v) => character.level >= v.niveau_prestige_requis);
-
   return (
-    <div className="flex flex-col gap-3">
-      {forgetSection}
-      <Card className="flex flex-col gap-3 border-[var(--accent)]">
-        <h2 className="font-semibold">
-          {points} point{points > 1 ? 's' : ''} de capacité à dépenser
-        </h2>
-
-      <div>
-        <p className="text-sm mb-1">Augmenter une voie déjà acquise :</p>
-        <div className="flex flex-wrap gap-2">
-          {(character.voies || []).filter((v) => !(v.rang_cap && v.rang >= v.rang_cap) && !v.nested_under_capacite_id).map((v) => {
-            const niveauRequis = NIVEAU_REQUIS_PAR_RANG[v.rang + 1];
-            const tooLow = niveauRequis != null && character.level < niveauRequis;
-            return (
-              <button
-                key={v.voie_id}
-                onClick={() => run(() => raiseCharacterVoieRang(character.id, v.voie_id))}
-                disabled={busy || tooLow}
-                title={tooLow ? `Niveau ${niveauRequis} requis pour ce rang (actuellement niveau ${character.level})` : undefined}
-                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50 disabled:hover:border-[var(--border)]"
-              >
-                {v.name} (rang {v.rang} → {v.rang + 1}){tooLow && ` — niveau ${niveauRequis} requis`}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {unownedProfilVoies.length > 0 && (
-        <div>
-          <p className="text-sm mb-1">Nouvelle voie de profil (rang 1, 1 point) :</p>
-          <div className="flex flex-wrap gap-2">
-            {unownedProfilVoies.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                disabled={busy}
-                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-              >
-                {v.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {unownedCustomVoies.length > 0 && (
-        <div>
-          <p className="text-sm mb-1">Voie personnalisée (homebrew, rang 1, 1 point) :</p>
-          <div className="flex flex-wrap gap-2">
-            {unownedCustomVoies.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                disabled={busy}
-                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-              >
-                {v.name} ({v.origine_pj})
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hybridVoies.length > 0 && (
-        <div>
-          <p className="text-sm mb-1">
-            Profil hybride — voie hors profil principal (rang 1, 1 point) :
-          </p>
-          <input
-            type="text"
-            placeholder="Rechercher une voie ou un profil..."
-            value={hybridSearch}
-            onChange={(e) => setHybridSearch(e.target.value)}
-            className="w-full mb-2 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
-          />
-          {hybridSearchResults ? (
-            hybridSearchResults.length === 0 ? (
-              <p className="text-xs text-[var(--text-secondary)]">Aucun résultat.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {hybridSearchResults.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                    disabled={busy}
-                    className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-                  >
-                    {v.name} ({profils.find((p) => p.id === v.profil_id)?.name})
-                  </button>
-                ))}
-              </div>
-            )
-          ) : (
-            <div className="flex flex-col gap-1">
-              {hybridProfilIds.map((pid) => {
-                const items = hybridByProfil[pid];
-                const isOpen = openHybridProfil === pid;
-                return (
-                  <div key={pid} className="rounded-lg border border-[var(--border)] overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setOpenHybridProfil(isOpen ? null : pid)}
-                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-left hover:bg-[var(--bg-input)]"
-                    >
-                      <span>{profils.find((p) => p.id === pid)?.name}</span>
-                      <span className="text-xs text-[var(--text-secondary)]">
-                        {items.length} voie{items.length > 1 ? 's' : ''} {isOpen ? '▲' : '▼'}
-                      </span>
-                    </button>
-                    {isOpen && (
-                      <div className="flex flex-wrap gap-2 p-2 pt-0">
-                        {items.map((v) => (
-                          <button
-                            key={v.id}
-                            onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                            disabled={busy}
-                            className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-                          >
-                            {v.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {eligiblePrestigeVoies.length > 0 && (
-        <div>
-          <p className="text-sm mb-1">Voie de prestige — une seule par carrière (rang 4, 2 points) :</p>
-          <div className="flex flex-wrap gap-2">
-            {eligiblePrestigeVoies.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => run(() => addCharacterVoie(character.id, { voie_id: v.id, obtained_at_level: character.level }))}
-                disabled={busy}
-                className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-              >
-                {v.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div>
-        <p className="text-sm mb-1">Point orphelin (si aucune capacité n'est accessible) :</p>
-        <div className="flex flex-wrap gap-2">
-          {[
-            ['pc', '+1 Chance'], ['dr', '+1 Récupération'], ['pv', '+2 PV'], ['pm', '+2 PM'],
-          ].map(([choice, label]) => (
-            <button
-              key={choice}
-              onClick={() => run(() => orphanExchange(character.id, choice))}
-              disabled={busy}
-              className="px-2 py-1 rounded border border-[var(--border)] text-sm hover:border-[var(--accent)] disabled:opacity-50"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      </Card>
-      {plannerSection}
-    </div>
+    <Card>
+      <StepButton onClick={levelUp} disabled={busy}>
+        Passer au niveau {character.level + 1}
+      </StepButton>
+    </Card>
   );
 }
 
