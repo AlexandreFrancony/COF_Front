@@ -60,7 +60,11 @@ function AugmentCard({ card, disabled, pickedCount, onPick, onRemove }) {
         title={card.lockedReason || undefined}
       >
         <div className="aug-frame">
-          <div className="aug-frame-inner">
+          {/* Keyed on the target rang: picking rang 1 with a point left to spare re-keys this
+              block for rang 2, so React remounts it fresh instead of just patching the text in
+              place — that's what lets the slide-in animation below play, as if rang 2 were
+              sliding out from behind the card rang 1 was just taken from. */}
+          <div className="aug-frame-inner aug-content-slide" key={card.rang}>
             <div style={{ position: 'relative', width: 44, height: 44, marginTop: 2 }}>
               <svg width="44" height="44" viewBox="0 0 48 48" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
                 <polygon className="medallion-ring" points="24,1 47,24 24,47 1,24" fill="none" strokeWidth="1.5" />

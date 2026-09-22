@@ -330,6 +330,17 @@ h2,
      description gets its own scroll for the rare capacité whose text doesn't fit. */
   height: 280px;
 }
+/* Plays once on mount — LevelUp.jsx keys this element on the card's target rang, so advancing a
+   voie to its next rang while a point remains remounts it fresh instead of patching the text in
+   place, which is what makes the animation fire. */
+@keyframes augSlideIn {
+  from { transform: translateX(-14px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.aug-content-slide { animation: augSlideIn 0.35s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .aug-content-slide { animation: none; }
+}
 .aug-corner {
   position: absolute;
   width: 7px;
