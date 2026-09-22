@@ -146,7 +146,6 @@ export default function LevelUp() {
 
   const realOwnedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const draftVoieEntries = draft.filter((e) => e.kind === 'voie');
-  const effectiveOwnedVoieIds = new Set([...realOwnedVoieIds, ...draftVoieEntries.map((e) => e.voieId)]);
   const effectiveRang = (voieId) => {
     const draftEntry = draftVoieEntries.find((e) => e.voieId === voieId);
     const real = (character.voies || []).find((v) => v.voie_id === voieId)?.rang || 0;
@@ -167,73 +166,76 @@ export default function LevelUp() {
   const plannedVoieIds = new Set(character.planned_voie_ids || []);
   const hasPlan = plannedVoieIds.size > 0;
 
-  const unownedProfilVoies = profilVoies.filter((v) => !effectiveOwnedVoieIds.has(v.id) && (!hasPlan || plannedVoieIds.has(v.id)));
+  // Stable list membership: every pool below is computed from REAL ownership + the roadmap
+  // only, never from the draft — a card must keep the exact same slot in the grid all session,
+  // picked or not, or the whole layout reflows every click and the player loses their place. A
+  // card's own CONTENT still reflects the draft (via effectiveRang below), just never its
+  // position.
+  const realRaisableVoies = (character.voies || [])
+    .filter((v) => !(v.rang_cap && v.rang >= v.rang_cap) && !v.nested_under_capacite_id && v.type !== 'prestige');
+  const unownedProfilVoies = profilVoies.filter((v) => !realOwnedVoieIds.has(v.id) && (!hasPlan || plannedVoieIds.has(v.id)));
   const unownedCustomVoies = customVoies.filter(
-    (v) => !effectiveOwnedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
+    (v) => !realOwnedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
       && (!hasPlan || plannedVoieIds.has(v.id))
   );
+  // Hybrid eligibility DOES react to the draft — picking enough own-profil voies this session
+  // can legitimately close off hybrid picks, same as it would for real. That's a rule
+  // consequence, not a cosmetic reorder: unlike the pools above, hybrid CARDS (plural, as a
+  // group) are allowed to disappear mid-session; an individual card never moves between pools.
+  const effectiveOwnedVoieIds = new Set([...realOwnedVoieIds, ...draftVoieEntries.map((e) => e.voieId)]);
   const effectiveOwnProfilOwnedCount = [...effectiveOwnedVoieIds].filter((vid) => profilVoies.some((pv) => pv.id === vid)).length;
   const hybridAllowed = effectiveOwnProfilOwnedCount < 5;
   const hybridVoies = hybridAllowed
-    ? allProfilVoies.filter((v) => !effectiveOwnedVoieIds.has(v.id) && v.profil_id !== character.profil_id && (!hasPlan || plannedVoieIds.has(v.id)))
+    ? allProfilVoies.filter((v) => !realOwnedVoieIds.has(v.id) && v.profil_id !== character.profil_id && (!hasPlan || plannedVoieIds.has(v.id)))
     : [];
-
-  // Raisable = every voie currently "owned" (for real, or just added in the draft), minus rang-
-  // capped/nested ones — a freshly drafted voie is never capped/nested, so only real ones need
-  // that check.
-  const raisableVoieIds = [...effectiveOwnedVoieIds].filter((vid) => {
-    const real = (character.voies || []).find((v) => v.voie_id === vid);
-    if (!real) return true;
-    return !(real.rang_cap && real.rang >= real.rang_cap) && !real.nested_under_capacite_id;
-  });
 
   const cards = [];
 
-  raisableVoieIds.forEach((voieId) => {
-    const real = (character.voies || []).find((v) => v.voie_id === voieId);
+  // Shared builder: `info` is either a character.voies entry (has voie_id/name/icon/type) or a
+  // catalog voie (has id/name/icon/type) — both shapes carry what's needed. newSubtitle is only
+  // used the very first time (currentRang 0); once picked, the card describes its own next rang
+  // like any owned voie, same as it would after the pick is actually saved.
+  const buildVoieCard = (voieId, info, category, newSubtitle) => {
     const currentRang = effectiveRang(voieId);
     const targetRang = currentRang + 1;
-    // A freshly drafted (not-yet-real) voie is always findable in voieCatalog — it's exactly
-    // where its "new voie" card came from in the first place.
-    const voieInfo = real || voieCatalog.find((v) => v.id === voieId);
-    if (voieInfo.type === 'prestige') return; // deferred for now, never offered here
     // A normal voie only ever defines 5 capacités (rang 1-5) — nothing exists to unlock past
-    // that, so there's no card to show once it's maxed out (prestige is the only type that goes
-    // further, and it's excluded above).
+    // that, so there's no card once it's maxed out.
     const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === targetRang);
-    if (!capaciteExists) return;
+    if (!capaciteExists) return null;
     const niveauRequis = NIVEAU_REQUIS_PAR_RANG[targetRang];
     const tooLow = niveauRequis != null && character.level < niveauRequis;
-    const category = voieInfo.type === 'custom' ? 'homebrew'
-      : voieInfo.type === 'peuple' || voieInfo.type === 'mage' ? 'own'
-      : profilVoies.some((pv) => pv.id === voieId) ? 'own' : 'hybride';
-    cards.push({
-      key: `voie-${voieId}`, kind: 'voie', voieId, name: voieInfo.name, icon: voieInfo.icon,
-      subtitle: `Rang ${currentRang} → ${targetRang}`, category, rang: targetRang,
-      cost: costForRang(targetRang), locked: tooLow,
+    return {
+      key: `voie-${voieId}`, kind: 'voie', voieId, name: info.name, icon: info.icon,
+      subtitle: currentRang > 0 ? `Rang ${currentRang} → ${targetRang}` : newSubtitle,
+      category, rang: targetRang, cost: costForRang(targetRang), locked: tooLow,
       lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
       description: resumeFor(voieId, targetRang),
-      profilId: voieInfo.type === 'profil' ? voieCatalog.find((v) => v.id === voieId)?.profil_id : null,
-    });
+      profilId: voieCatalog.find((v) => v.id === voieId)?.profil_id ?? null,
+    };
+  };
+
+  realRaisableVoies.forEach((v) => {
+    const category = v.type === 'custom' ? 'homebrew'
+      : v.type === 'peuple' || v.type === 'mage' ? 'own'
+      : profilVoies.some((pv) => pv.id === v.voie_id) ? 'own' : 'hybride';
+    const card = buildVoieCard(v.voie_id, v, category, null);
+    if (card) cards.push(card);
   });
 
-  unownedProfilVoies.forEach((v) => cards.push({
-    key: `voie-${v.id}`, kind: 'voie', voieId: v.id, name: v.name, icon: v.icon,
-    subtitle: 'Nouvelle voie, rang 1', category: 'own', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1), profilId: v.profil_id,
-  }));
+  unownedProfilVoies.forEach((v) => {
+    const card = buildVoieCard(v.id, v, 'own', 'Nouvelle voie, rang 1');
+    if (card) cards.push(card);
+  });
 
-  unownedCustomVoies.forEach((v) => cards.push({
-    key: `voie-${v.id}`, kind: 'voie', voieId: v.id, name: v.name, icon: v.icon,
-    subtitle: 'Homebrew, rang 1', category: 'homebrew', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1), profilId: null,
-  }));
+  unownedCustomVoies.forEach((v) => {
+    const card = buildVoieCard(v.id, v, 'homebrew', 'Homebrew, rang 1');
+    if (card) cards.push(card);
+  });
 
-  hybridVoies.forEach((v) => cards.push({
-    key: `voie-${v.id}`, kind: 'voie', voieId: v.id, name: v.name, icon: v.icon,
-    subtitle: `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`, category: 'hybride', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1), profilId: v.profil_id,
-  }));
+  hybridVoies.forEach((v) => {
+    const card = buildVoieCard(v.id, v, 'hybride', `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`);
+    if (card) cards.push(card);
+  });
 
   // Point orphelin (p.42) : réservé au cas où aucune autre capacité n'est accessible.
   const hasOtherOption = cards.length > 0;
