@@ -171,26 +171,26 @@ export default function LevelUp() {
       subtitle: `Rang ${v.rang} → ${targetRang}`, category, rang: targetRang,
       cost: targetRang >= 3 ? 2 : 1, locked: tooLow,
       lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
-      description: resumeFor(v.voie_id, targetRang),
+      icon: v.icon, description: resumeFor(v.voie_id, targetRang),
     });
   });
 
   unownedProfilVoies.forEach((v) => cards.push({
     key: `new-profil-${v.id}`, kind: 'new', voieId: v.id, name: v.name,
     subtitle: 'Nouvelle voie, rang 1', category: 'own', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1),
+    icon: v.icon, description: resumeFor(v.id, 1),
   }));
 
   unownedCustomVoies.forEach((v) => cards.push({
     key: `new-custom-${v.id}`, kind: 'new', voieId: v.id, name: v.name,
     subtitle: 'Homebrew, rang 1', category: 'homebrew', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1),
+    icon: v.icon, description: resumeFor(v.id, 1),
   }));
 
   hybridVoies.forEach((v) => cards.push({
     key: `new-hybrid-${v.id}`, kind: 'new', voieId: v.id, name: v.name,
     subtitle: `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`, category: 'hybride', rang: 1, cost: 1, locked: false,
-    description: resumeFor(v.id, 1),
+    icon: v.icon, description: resumeFor(v.id, 1),
   }));
 
   // Point orphelin (p.42) : réservé au cas où aucune autre capacité n'est accessible.
