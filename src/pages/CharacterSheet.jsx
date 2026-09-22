@@ -1392,15 +1392,18 @@ function LevelUpBanner({ character, onRefresh }) {
     );
   }
 
+  // One click does both: advance the level (grants the points) and go straight to spending them
+  // — landing back on this same banner just to see it flip into the "points to spend" button,
+  // needing a second click, was the exact two-step friction this redesign set out to remove.
   const levelUp = async () => {
     setBusy(true);
     try {
       await levelUpCharacter(character.id);
-      await onRefresh();
+      onRefresh();
       toast.success('Niveau supérieur !');
+      navigate(`/characters/${character.id}/level-up`);
     } catch (e) {
       toast.error(e.message);
-    } finally {
       setBusy(false);
     }
   };
