@@ -254,22 +254,51 @@ h2,
 .aug-card {
   position: relative;
   width: 180px;
-  border: none;
   padding: 4px;
   border-radius: 20px;
   box-shadow: 0 12px 22px rgba(60, 45, 20, 0.28);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+/* A picked card's checkmark badge must stay clickable (to un-pick) even once the card itself is
+   greyed out for lacking points to add another increment — so the pick action and the whole
+   card's rarity frame are two separate elements: this button is unstyled and just fills the
+   frame, while the outer .aug-card div (not a button) carries the hover-lift/disabled look via
+   :has(), since a disabled <button> would swallow clicks on anything nested inside it. */
+.aug-card-btn {
+  all: unset;
+  display: block;
+  width: 100%;
   cursor: pointer;
 }
-.aug-card:not(:disabled):hover {
+.aug-card:has(.aug-card-btn:not(:disabled):hover) {
   transform: translateY(-6px);
   box-shadow: 0 18px 30px rgba(60, 45, 20, 0.36);
 }
-.aug-card:disabled {
-  cursor: not-allowed;
+.aug-card:has(.aug-card-btn:disabled) {
   filter: grayscale(0.7) brightness(0.92);
   opacity: 0.65;
 }
+.aug-card-btn:disabled { cursor: not-allowed; }
+.aug-check {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  z-index: 4;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--positive);
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.aug-check:hover { background: var(--negative); }
 .aug-silver { background: linear-gradient(160deg, #f4f7fa, #8b95a3 45%, #dfe4e9); }
 .aug-gold { background: linear-gradient(160deg, #fff3cf, #a9762e 45%, #ffe3a1); }
 .aug-prismatic { background: linear-gradient(135deg, #ff9ecb, #9b8cff 35%, #7fd6ff 65%, #ffe08a); }

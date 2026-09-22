@@ -28,49 +28,65 @@ function rarityFor(rang) {
   return 'silver';
 }
 
-function AugmentCard({ card, disabled, pickedCount, onPick }) {
+function AugmentCard({ card, disabled, pickedCount, onPick, onRemove }) {
   const rarity = rarityFor(card.rang);
   const meta = CATEGORY_META[card.category];
   return (
-    <button
-      type="button"
-      className={`aug-card aug-${rarity}`}
-      disabled={card.locked || disabled}
-      onClick={() => onPick(card)}
-      title={card.lockedReason || undefined}
-    >
-      {pickedCount > 0 && <span className="aug-badge">×{pickedCount} en attente</span>}
+    <div className={`aug-card aug-${rarity}`}>
+      {pickedCount > 0 && (
+        // A separate button, sibling to the pick button below (never nested — a button inside a
+        // button is invalid HTML and the outer one being disabled would swallow the click) — so
+        // "remove this choice" still works even once the card itself is greyed out for lacking
+        // points to add another increment.
+        <button
+          type="button"
+          className="aug-check"
+          onClick={() => onRemove(card)}
+          title="Retirer ce choix (pas encore enregistré)"
+          aria-label={`Retirer ${card.name} de la sélection`}
+        >
+          ✓{pickedCount > 1 ? ` ${pickedCount}` : ''}
+        </button>
+      )}
       <span className="aug-corner" style={{ top: 6, left: 6 }} />
       <span className="aug-corner" style={{ top: 6, right: 6 }} />
       <span className="aug-corner" style={{ bottom: 6, left: 6 }} />
       <span className="aug-corner" style={{ bottom: 6, right: 6 }} />
-      <div className="aug-frame">
-        <div className="aug-frame-inner">
-          <div style={{ position: 'relative', width: 44, height: 44, marginTop: 2 }}>
-            <svg width="44" height="44" viewBox="0 0 48 48" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
-              <polygon className="medallion-ring" points="24,1 47,24 24,47 1,24" fill="none" strokeWidth="1.5" />
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{
-                width: 24, height: 24, borderRadius: '50%', background: meta.color,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
-              }}>
-                {card.icon || meta.fallbackIcon}
+      <button
+        type="button"
+        className="aug-card-btn"
+        disabled={card.locked || disabled}
+        onClick={() => onPick(card)}
+        title={card.lockedReason || undefined}
+      >
+        <div className="aug-frame">
+          <div className="aug-frame-inner">
+            <div style={{ position: 'relative', width: 44, height: 44, marginTop: 2 }}>
+              <svg width="44" height="44" viewBox="0 0 48 48" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
+                <polygon className="medallion-ring" points="24,1 47,24 24,47 1,24" fill="none" strokeWidth="1.5" />
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: '50%', background: meta.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
+                }}>
+                  {card.icon || meta.fallbackIcon}
+                </div>
               </div>
             </div>
+            <div className="aug-title">{card.name}</div>
+            <div className="aug-sub">{card.subtitle}</div>
+            <div className="aug-rule" />
+            <div className="aug-desc">{card.description}</div>
+            {card.locked ? (
+              <div className="aug-locked">🔒 {card.lockedReason}</div>
+            ) : (
+              <div className="aug-cost">{card.cost} point{card.cost > 1 ? 's' : ''}</div>
+            )}
           </div>
-          <div className="aug-title">{card.name}</div>
-          <div className="aug-sub">{card.subtitle}</div>
-          <div className="aug-rule" />
-          <div className="aug-desc">{card.description}</div>
-          {card.locked ? (
-            <div className="aug-locked">🔒 {card.lockedReason}</div>
-          ) : (
-            <div className="aug-cost">{card.cost} point{card.cost > 1 ? 's' : ''}</div>
-          )}
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -236,8 +252,12 @@ export default function LevelUp() {
     });
   };
 
-  const removeDraftEntry = (entry) => {
-    setDraft((prev) => prev.filter((e) => e !== entry));
+  // Takes a card (from `cards`), not a draft entry directly — the checkmark badge lives on the
+  // card, which is rebuilt fresh every render, so it can only ever hand back the card it knows.
+  const removeDraftEntry = (card) => {
+    setDraft((prev) => prev.filter((e) => (
+      card.kind === 'orphan' ? !(e.kind === 'orphan' && e.choice === card.choice) : !(e.kind === 'voie' && e.voieId === card.voieId)
+    )));
   };
 
   // --- Preview: pv_max/pm_max as if the draft were committed. Best-effort (doesn't mirror
@@ -406,28 +426,6 @@ export default function LevelUp() {
             </div>
           </div>
 
-          {draft.length > 0 && (
-            <div className="flex flex-wrap gap-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] px-4 py-3">
-              <span className="text-xs text-[var(--text-secondary)] w-full mb-1">Choix en attente — pas encore enregistrés :</span>
-              {draft.map((entry) => (
-                <span
-                  key={entry.kind === 'orphan' ? `orphan-${entry.choice}` : `voie-${entry.voieId}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--bg-input)] border border-[var(--border)] text-xs"
-                >
-                  {entry.icon} {entry.name}{entry.count > 1 ? ` ×${entry.count}` : ''}
-                  <button
-                    type="button"
-                    onClick={() => removeDraftEntry(entry)}
-                    className="text-[var(--text-secondary)] hover:text-[var(--negative)] font-bold"
-                    aria-label={`Retirer ${entry.name}`}
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
           {character.capacity_points_available === 0 && draft.length === 0 ? (
             <div className="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-8 text-center text-[var(--text-secondary)]">
               Tous les points de ce niveau sont dépensés.
@@ -441,6 +439,7 @@ export default function LevelUp() {
                   disabled={saving || (effectivePoints <= 0 && !card.locked)}
                   pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : draftCountFor(card.voieId)}
                   onPick={pickCard}
+                  onRemove={removeDraftEntry}
                 />
               ))}
             </div>
