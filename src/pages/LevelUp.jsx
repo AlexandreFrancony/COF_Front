@@ -6,7 +6,7 @@ import {
 } from '../utils/api';
 import { NIVEAU_REQUIS_PAR_RANG } from '../utils/rules';
 import { evolvingDieForLevel } from '../utils/evolvingDice';
-import { computePvBodyGain, computePmMax, costForRang } from '../utils/characterPreview';
+import { computePvBodyGain, computePmMax, costForRang, pvMaxConTerm } from '../utils/characterPreview';
 
 const CATEGORY_META = {
   own: { color: '#C9973E', fallbackIcon: '⚔️' },
@@ -274,7 +274,16 @@ export default function LevelUp() {
     const { gain } = computePvBodyGain(pvBases, character.pv_pending_half);
     return character.pv_body_total + gain + pvOrphanDraft;
   };
-  const previewPvMax = previewPvBodyTotal() + character.caracteristiques.CON * character.level;
+  // Nothing about pv_max actually changes until the level's points are all finalized (matches
+  // real behavior) — showing a recomputed value in the meantime, even a correct one, would flash
+  // a bogus swing every click. Once it does finalize, mirror the same CON/INT-substitution
+  // capacité effects (e.g. Grosse tête) the real formula applies, using the character's own
+  // already-fetched capacités — a plain CON × level here would show a false regression for
+  // anyone with that kind of effect.
+  const capaciteEffects = (character.voies || []).flatMap((v) => (v.capacites || []).map((c) => c.effect)).filter(Boolean);
+  const previewPvMax = effectivePoints > 0
+    ? character.pv_max
+    : previewPvBodyTotal() + pvMaxConTerm(character.caracteristiques, capaciteEffects, character.level);
   const previewChance = character.points_chance + draftCountForOrphan('pc');
 
   const prevDie = evolvingDieForLevel(character.level - 1);
