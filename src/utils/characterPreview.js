@@ -32,3 +32,21 @@ export function pvMaxConTerm(caracteristiques, capaciteEffects, level) {
   }
   return level1Stat + caracteristiques.CON * (level - 1);
 }
+
+// Mirrors characterCalculations.js's flatBonusFor — a voie's own text sometimes grants a flat
+// bonus (DEF, PM max, initiative) keyed to how far THAT voie has been raised, not the
+// character's level (e.g. Runes de défense, Tour de magie). capaciteEffects is
+// [{ effect, voieRang }], voieRang being the owning voie's rang (real or, for a preview,
+// effective-with-draft).
+export function flatBonusFor(capaciteEffects, formulaName) {
+  let total = 0;
+  for (const { effect, voieRang } of capaciteEffects) {
+    if (effect?.type !== 'flat_bonus_by_rang') continue;
+    for (const bonus of effect.bonuses || []) {
+      if (bonus.in !== formulaName) continue;
+      const applicable = bonus.thresholds.filter((t) => voieRang >= t.rang);
+      if (applicable.length > 0) total += Math.max(...applicable.map((t) => t.amount));
+    }
+  }
+  return total;
+}

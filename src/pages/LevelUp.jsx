@@ -6,7 +6,7 @@ import {
 } from '../utils/api';
 import { NIVEAU_REQUIS_PAR_RANG } from '../utils/rules';
 import { evolvingDieForLevel } from '../utils/evolvingDice';
-import { computePvBodyGain, computePmMax, costForRang, pvMaxConTerm } from '../utils/characterPreview';
+import { computePvBodyGain, computePmMax, costForRang, pvMaxConTerm, flatBonusFor } from '../utils/characterPreview';
 
 const CATEGORY_META = {
   own: { color: '#C9973E', fallbackIcon: '⚔️' },
@@ -289,10 +289,13 @@ export default function LevelUp() {
     });
   };
 
-  // --- Preview: pv_max/pm_max as if the draft were committed. Best-effort (doesn't mirror
-  // capacité effects like a rang-scaling flat bonus or a permanent stat increase) — the real
-  // commit always goes through the authoritative backend, so this can only be slightly
-  // optimistic/pessimistic, never wrong in what actually gets saved.
+  // --- Preview: every derived stat as if the draft were committed. Mirrors the backend's
+  // stat_substitute_max and flat_bonus_by_rang capacité effects (pv_max/pm_max/défense/
+  // initiative below); best-effort only for a capacité that grants a permanent caractéristique
+  // increase (stat_permanent_increase, e.g. Esprit supérieur) — picking one of those this same
+  // level won't retroactively bump the preview's AGI/PER/VOL. The real commit always goes
+  // through the authoritative backend regardless, so a gap here can only make the PREVIEW
+  // slightly off, never the saved data.
   const effectiveSortsCount = () => {
     let count = 0;
     effectiveOwnedVoieIds.forEach((voieId) => {
@@ -302,8 +305,32 @@ export default function LevelUp() {
     });
     return count;
   };
+  // { effect, voieRang } pairs mirroring what the backend's own flatBonusFor/pvMaxConTerm read —
+  // "current" from real ownership (character.voies already comes rang-gated from the backend),
+  // "draft" recomputed at the draft's effective rang for every voie touched this session
+  // (including a voie not owned yet, resolved through voieCatalog since it isn't in
+  // character.voies at all until committed).
+  const currentCapaciteEffects = (character.voies || []).flatMap(
+    (v) => (v.capacites || []).map((c) => ({ effect: c.effect, voieRang: v.rang })).filter((e) => e.effect)
+  );
+  const draftCapaciteEffects = [...effectiveOwnedVoieIds].flatMap((voieId) => {
+    const rang = effectiveRang(voieId);
+    const caps = voieCatalog.find((v) => v.id === voieId)?.capacites || [];
+    return caps.filter((c) => c.rang <= rang && c.effect).map((c) => ({ effect: c.effect, voieRang: rang }));
+  });
+
   const pmBonusOrphanDraft = draftCountForOrphan('pm') * 2;
-  const previewPmMax = computePmMax(effectiveSortsCount(), character.caracteristiques.VOL) + character.pm_bonus_orphan + pmBonusOrphanDraft;
+  const previewPmMax = computePmMax(effectiveSortsCount(), character.caracteristiques.VOL) + character.pm_bonus_orphan
+    + pmBonusOrphanDraft + flatBonusFor(draftCapaciteEffects, 'pm_max');
+  // Défense/initiative aren't a per-level ledger like pv_max — the backend recomputes them
+  // instantly after every single voie mutation, not just once a level's points are all spent —
+  // so the preview reacts to the draft immediately too, as a delta over the character's current
+  // (already-live) value rather than a from-scratch formula (which would need armor/shield data
+  // the level-up page doesn't have).
+  const previewDefense = character.defense
+    + flatBonusFor(draftCapaciteEffects, 'defense') - flatBonusFor(currentCapaciteEffects, 'defense');
+  const previewInitiative = character.initiative
+    + flatBonusFor(draftCapaciteEffects, 'initiative') - flatBonusFor(currentCapaciteEffects, 'initiative');
 
   const previewPvBodyTotal = () => {
     if (effectivePoints > 0) return character.pv_body_total; // not finalized yet, like today
@@ -329,10 +356,9 @@ export default function LevelUp() {
   // capacité effects (e.g. Grosse tête) the real formula applies, using the character's own
   // already-fetched capacités — a plain CON × level here would show a false regression for
   // anyone with that kind of effect.
-  const capaciteEffects = (character.voies || []).flatMap((v) => (v.capacites || []).map((c) => c.effect)).filter(Boolean);
   const previewPvMax = effectivePoints > 0
     ? character.pv_max
-    : previewPvBodyTotal() + pvMaxConTerm(character.caracteristiques, capaciteEffects, character.level);
+    : previewPvBodyTotal() + pvMaxConTerm(character.caracteristiques, draftCapaciteEffects.map((e) => e.effect), character.level);
   const previewChance = character.points_chance + draftCountForOrphan('pc');
 
   const prevDie = evolvingDieForLevel(character.level - 1);
@@ -416,8 +442,8 @@ export default function LevelUp() {
             {statRow('Vigueur max', '❤️', initialStats.pv_max, previewPvMax)}
             {statRow('Mana max', '🔮', initialStats.pm_max, previewPmMax)}
             {statRow('Chance', '🍀', initialStats.points_chance, previewChance)}
-            {statRow('Défense', '🛡️', initialStats.defense, character.defense)}
-            {statRow('Initiative', '⚡', initialStats.initiative, character.initiative)}
+            {statRow('Défense', '🛡️', initialStats.defense, previewDefense)}
+            {statRow('Initiative', '⚡', initialStats.initiative, previewInitiative)}
           </div>
           {diceChanged && evolvingCapacites.length > 0 && (
             <>
