@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
 // a visual square/circle instead of a stretched ellipse.
 export const BOARD_ASPECT_RATIO = 16 / 9;
+const STAGE_STYLE = {
+  width: `min(100cqw, ${100 * BOARD_ASPECT_RATIO}cqh)`,
+  height: `min(100cqh, ${100 / BOARD_ASPECT_RATIO}cqw)`,
+};
 
 // Fog of war's own grid — independent from the tactical grid_size the GM sets for movement, and
 // never adjustable: fine enough for a paintbrush without needing a real bitmap. 40 cols x 23
@@ -782,14 +786,24 @@ export default function BoardCanvas({
 
   // Pointer tool (BoardEditor.jsx's "📍 Pointeur" toggle): the next click anywhere on the scene
   // broadcasts a ping instead of the usual deselect-everything background click.
+  const stageRef = useRef(null);
   const handleClick = (e) => {
     if (!pingMode) return onBackgroundClick();
-    const rect = e.currentTarget.getBoundingClientRect();
-    onPing(((e.clientX - rect.left) / rect.width) * 100, ((e.clientY - rect.top) / rect.height) * 100);
+    const rect = stageRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    if (x >= 0 && x <= 100 && y >= 0 && y <= 100) onPing(x, y);
   };
 
+  // Every position on the board (pawns, zones, fog cells, drawings, pings, camera frame) is a % of
+  // the scene, and the background is drawn `contain` inside it: the scene must therefore have the
+  // same shape on every screen, or a pawn lands on a different spot of the map for each viewer.
+  // The outer frame takes whatever shape its page gives it (a fullscreen projector, a board
+  // stretched next to a taller side panel); the stage inside it is always exactly 16:9, centered,
+  // letterboxed. Container units (cqw/cqh) size it against the frame, not the viewport.
   return (
-    <div onClick={handleClick} className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`} style={style}>
+    <div onClick={handleClick} className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`} style={{ containerType: 'size', ...style }}>
+      <div ref={stageRef} className="absolute inset-0 m-auto" style={STAGE_STYLE}>
       {/* Background layer(s) only — kept separate from the content layer below so a scene change
           never remounts (and re-plays the enter animation of) every token/zone already on the
           map. contain (not cover): a background must always show in full at its native aspect —
@@ -875,8 +889,6 @@ export default function BoardCanvas({
         {pings.map((ping) => <Ping key={ping.id} x={ping.x} y={ping.y} />)}
       </div>
 
-      {board.handout_url && <HandoutOverlay url={board.handout_url} />}
-
       {showCameraFrame && (
         <CameraFrame
           board={board}
@@ -886,6 +898,9 @@ export default function BoardCanvas({
           onResizeEnd={onCameraResizeEnd}
         />
       )}
+      </div>
+
+      {board.handout_url && <HandoutOverlay url={board.handout_url} />}
 
       {/* flex-wrap (column direction) starts a new column once max-h is reached, instead of
           silently clipping cards past the board's bottom edge when there are many characters.
