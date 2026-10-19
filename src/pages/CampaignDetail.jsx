@@ -524,8 +524,8 @@ function ScenarioItem({
     applyOrToast(updateScenarioToken(token.id, { hide_hp_from_players: !token.hide_hp_from_players }));
   const handleTokenPlayerLabelChange = (token, label) =>
     applyOrToast(updateScenarioToken(token.id, { player_hp_label: label }));
-  const handleAddCharacterToken = (character) =>
-    applyOrToast(createScenarioToken(scenario.id, { label: character.name, character_id: character.id }));
+  const handleAddCharacterToken = (character, x, y) =>
+    applyOrToast(createScenarioToken(scenario.id, { label: character.name, character_id: character.id, x, y }));
   const handleMoveToken = (tokenId, x, y) => applyOrToast(updateScenarioToken(tokenId, { x, y }));
   const handleToggleTokenVisible = (token) =>
     applyOrToast(updateScenarioToken(token.id, { visible_to_players: !token.visible_to_players }));

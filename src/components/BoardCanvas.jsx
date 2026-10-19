@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
 // a visual square/circle instead of a stretched ellipse.
 export const BOARD_ASPECT_RATIO = 16 / 9;
+// What the GM's library drawer puts in a drag (a monster, a character) for the board to drop.
+export const BOARD_DRAG_MIME = 'application/x-aiw-board-item';
 const STAGE_STYLE = {
   width: `min(100cqw, ${100 * BOARD_ASPECT_RATIO}cqh)`,
   height: `min(100cqh, ${100 / BOARD_ASPECT_RATIO}cqw)`,
@@ -41,6 +43,7 @@ function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
     e.stopPropagation();
     const container = ref.current.parentElement;
     const rect = container.getBoundingClientRect();
+    delete ref.current.dataset.moved;
 
     const move = (ev) => {
       let nx = Math.min(100, Math.max(0, ((ev.clientX - rect.left) / rect.width) * 100));
@@ -55,6 +58,9 @@ function usePositionDrag(enabled, x, y, onDragEnd, snapGridSize = null) {
       ref.current.style.top = `${ny}%`;
       ref.current.dataset.x = nx;
       ref.current.dataset.y = ny;
+      // The browser still fires a click on release: flag it so the pawn doesn't treat the end of
+      // a drag as a click (which would shrink a multi-selection down to the dragged pawn).
+      ref.current.dataset.moved = '1';
     };
 
     const up = () => {
@@ -375,7 +381,7 @@ export function resolveAvatar(entry) {
 // for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
 // replacement a player sees instead — a small static badge, not a bar, since there's nothing
 // numeric behind it for them.
-function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, size = 40, exiting = false, labelsVisible = true }) {
+function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, onContextMenu = null, size = 40, exiting = false, labelsVisible = true }) {
   const { ref, handlePointerDown } = usePositionDrag(
     isGm && !exiting, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
   );
@@ -395,8 +401,17 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, s
       ref={ref}
       onClick={(e) => {
         e.stopPropagation();
-        !exiting && onSelect(token);
+        if (ref.current?.dataset.moved) {
+          delete ref.current.dataset.moved;
+          return;
+        }
+        !exiting && onSelect(token, e);
       }}
+      onContextMenu={onContextMenu && !exiting ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(token, e.clientX, e.clientY);
+      } : undefined}
       className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${isGm && !exiting ? '' : 'cursor-pointer'}`}
       style={{ left: `${token.x}%`, top: `${token.y}%`, width: size, height: size }}
     >
@@ -769,6 +784,7 @@ export default function BoardCanvas({
   pings = [], pingMode = false, onPing = () => {},
   fogMode = false, fogBrushMode = 'reveal', fogBrushRadius = 2, onFogPaint = () => {},
   drawMode = false, drawColor = '#ef4444', onDraw = () => {},
+  selectedTokenIds = null, onTokenContextMenu = null, onMarqueeSelect = null, onDropItem = null,
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
@@ -798,8 +814,62 @@ export default function BoardCanvas({
   // Pointer tool (BoardEditor.jsx's "📍 Pointeur" toggle): the next click anywhere on the scene
   // broadcasts a ping instead of the usual deselect-everything background click.
   const stageRef = useRef(null);
+  const marqueeJustEnded = useRef(false);
+  const [marquee, setMarquee] = useState(null);
+  const isSelected = (token) => (selectedTokenIds ? selectedTokenIds.includes(token.id) : selectedToken?.id === token.id);
+
+  const stagePercent = (clientX, clientY) => {
+    const rect = stageRef.current.getBoundingClientRect();
+    return { x: ((clientX - rect.left) / rect.width) * 100, y: ((clientY - rect.top) / rect.height) * 100 };
+  };
+
+  // Rubber-band selection: a press-and-drag on empty board (nothing armed) draws a rectangle and
+  // selects every pawn whose center lands in it. A press without movement stays a plain click
+  // (deselect), so this never gets in the way of the usual background click.
+  const handleStagePointerDown = (e) => {
+    if (!onMarqueeSelect || pingMode || fogMode || drawMode || e.button !== 0) return;
+    const start = stagePercent(e.clientX, e.clientY);
+    const startPx = { x: e.clientX, y: e.clientY };
+    let current = null;
+    const move = (ev) => {
+      if (!current && Math.hypot(ev.clientX - startPx.x, ev.clientY - startPx.y) < 5) return;
+      const p = stagePercent(ev.clientX, ev.clientY);
+      current = {
+        x1: Math.min(start.x, p.x), y1: Math.min(start.y, p.y),
+        x2: Math.max(start.x, p.x), y2: Math.max(start.y, p.y),
+      };
+      setMarquee(current);
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setMarquee(null);
+      if (current) {
+        marqueeJustEnded.current = true;
+        onMarqueeSelect(current, ev.shiftKey);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const handleDragOver = (e) => {
+    if (onDropItem && e.dataTransfer.types.includes(BOARD_DRAG_MIME)) e.preventDefault();
+  };
+  const handleDrop = (e) => {
+    const raw = e.dataTransfer.getData(BOARD_DRAG_MIME);
+    if (!onDropItem || !raw) return;
+    e.preventDefault();
+    const p = stagePercent(e.clientX, e.clientY);
+    onDropItem(JSON.parse(raw), Math.min(100, Math.max(0, p.x)), Math.min(100, Math.max(0, p.y)));
+  };
+
   const handleClick = (e) => {
-    if (!pingMode) return onBackgroundClick();
+    if (marqueeJustEnded.current) {
+      marqueeJustEnded.current = false;
+      return;
+    }
+    if (!pingMode) return onBackgroundClick(e);
     const rect = stageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -813,8 +883,14 @@ export default function BoardCanvas({
   // stretched next to a taller side panel); the stage inside it is always exactly 16:9, centered,
   // letterboxed. Container units (cqw/cqh) size it against the frame, not the viewport.
   return (
-    <div onClick={handleClick} className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`} style={{ containerType: 'size', ...style }}>
-      <div ref={stageRef} className="absolute inset-0 m-auto" style={STAGE_STYLE}>
+    <div
+      onClick={handleClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className={`overflow-hidden ${className} ${pingMode ? 'cursor-crosshair' : ''}`}
+      style={{ containerType: 'size', ...style }}
+    >
+      <div ref={stageRef} onPointerDown={handleStagePointerDown} className="absolute inset-0 m-auto" style={STAGE_STYLE}>
       {/* Background layer(s) only — kept separate from the content layer below so a scene change
           never remounts (and re-plays the enter animation of) every token/zone already on the
           map. contain (not cover): a background must always show in full at its native aspect —
@@ -874,11 +950,12 @@ export default function BoardCanvas({
             key={token.id}
             token={token}
             isGm={isGm}
-            selected={selectedToken?.id === token.id}
+            selected={isSelected(token)}
             active={token.id === activeTokenId}
             gridSize={board.grid_visible ? board.grid_size : null}
             onSelect={onSelectToken}
             onDragEnd={onTokenDragEnd}
+            onContextMenu={onTokenContextMenu}
             size={board.token_size || 40}
             exiting={i >= board.tokens.length}
             labelsVisible={board.labels_visible !== false}
@@ -898,6 +975,12 @@ export default function BoardCanvas({
           <DrawingLayer drawings={board.drawings} editable={drawMode} color={drawColor} onDraw={onDraw} />
         )}
         {pings.map((ping) => <Ping key={ping.id} x={ping.x} y={ping.y} />)}
+        {marquee && (
+          <div
+            className="absolute z-[60] border border-dashed border-[var(--accent)] bg-[var(--accent)]/10 pointer-events-none"
+            style={{ left: `${marquee.x1}%`, top: `${marquee.y1}%`, width: `${marquee.x2 - marquee.x1}%`, height: `${marquee.y2 - marquee.y1}%` }}
+          />
+        )}
       </div>
 
       {showCameraFrame && (
@@ -923,7 +1006,7 @@ export default function BoardCanvas({
             <div key={entry.id} className="flex flex-col gap-1 items-start">
               <HudCard
                 entry={entry}
-                selected={selectedToken?.id === entry.id}
+                selected={isSelected(entry)}
                 active={entry.id === activeTokenId}
                 onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
               />
@@ -931,7 +1014,7 @@ export default function BoardCanvas({
                 <CreatureHudChip
                   key={creature.id}
                   entry={creature}
-                  selected={selectedToken?.id === creature.id}
+                  selected={isSelected(creature)}
                   onClick={(e) => { e.stopPropagation(); onSelectToken(creature); }}
                   offsetClassName="ml-3 sm:ml-4"
                 />
@@ -947,7 +1030,7 @@ export default function BoardCanvas({
               <HudCard
                 entry={entry}
                 tone="enemy"
-                selected={selectedToken?.id === entry.id}
+                selected={isSelected(entry)}
                 active={entry.id === activeTokenId}
                 onClick={(e) => { e.stopPropagation(); onSelectToken(entry); }}
               />
@@ -955,7 +1038,7 @@ export default function BoardCanvas({
                 <CreatureHudChip
                   key={creature.id}
                   entry={creature}
-                  selected={selectedToken?.id === creature.id}
+                  selected={isSelected(creature)}
                   onClick={(e) => { e.stopPropagation(); onSelectToken(creature); }}
                   offsetClassName="mr-3 sm:mr-4"
                 />

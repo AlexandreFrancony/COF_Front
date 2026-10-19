@@ -230,19 +230,22 @@ export default function Board() {
     }
   };
 
+  // Resolves with the new board so the editor can select the pawns it just created.
   const handleAddToken = async (label, hpMax, ownerCharacterId, monstreId, x, y) => {
     try {
-      setBoard(await createBoardToken(campaignId, {
+      const updated = await createBoardToken(campaignId, {
         label, hp_max: hpMax, owner_character_id: ownerCharacterId, monstre_id: monstreId, x, y,
-      }));
+      });
+      setBoard(updated);
+      return updated;
     } catch (error) {
       toast.error(error.message);
     }
   };
 
-  const handleAddCharacterToken = async (character) => {
+  const handleAddCharacterToken = async (character, x, y) => {
     try {
-      setBoard(await createBoardToken(campaignId, { label: character.name, character_id: character.id }));
+      setBoard(await createBoardToken(campaignId, { label: character.name, character_id: character.id, x, y }));
     } catch (error) {
       toast.error(error.message);
     }

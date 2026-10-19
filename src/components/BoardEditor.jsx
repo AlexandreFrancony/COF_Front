@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import BoardCanvas, { FOG_COLS, FOG_ROWS } from './BoardCanvas';
+import BoardCanvas, { BOARD_DRAG_MIME, FOG_COLS, FOG_ROWS } from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
@@ -19,9 +19,9 @@ const MONSTRE_CATEGORY_LABELS = {
 };
 
 // Spreads N freshly-spawned pawns around a center point in a rough grid instead of stacking
-// them exactly on top of each other (they'd otherwise all land on the same default 50/50 spot
-// and hide behind one another until the GM drags each one apart by hand). Clamped to stay
-// inside the board (5-95%) even for a largeish group.
+// them exactly on top of each other (they'd otherwise all land on the same spot and hide behind
+// one another until the GM drags each one apart by hand). Clamped to stay inside the board
+// (5-95%) even for a largeish group.
 function spreadPositions(n, centerX = 50, centerY = 50, spacing = 7) {
   const cols = Math.ceil(Math.sqrt(n));
   const rows = Math.ceil(n / cols);
@@ -37,6 +37,8 @@ function spreadPositions(n, centerX = 50, centerY = 50, spacing = 7) {
   return positions;
 }
 
+const clampPct = (v) => Math.min(100, Math.max(0, v));
+
 // A handful of common COF2 combat conditions, not an exhaustive list — the free-text field next
 // to these covers anything else. Toggle presence in the selected token's own status_icons array.
 const STATUS_PRESETS = [
@@ -44,22 +46,142 @@ const STATUS_PRESETS = [
   ['😱', 'Effrayé'], ['⛓️', 'Entravé'], ['🛌', 'À terre'],
 ];
 
+// "12" = 12 damage (the common case at the table), "-12" the same, "+5" heals 5, "=20" sets the
+// PV to 20. Returns null for anything else so a typo never silently changes a pawn's life.
+export function parseHpInput(text) {
+  const m = String(text).trim().match(/^([+=-]?)\s*(\d+)$/);
+  if (!m) return null;
+  const n = Number(m[2]);
+  if (m[1] === '=') return { set: n };
+  return { delta: m[1] === '+' ? n : -n };
+}
+
+const LIBRARY_TABS = [
+  ['ennemis', '🗡️ Ennemis'],
+  ['personnages', '🧙 Personnages'],
+  ['fonds', '🖼️ Fonds'],
+  ['documents', '📄 Documents', true],
+  ['musique', '🎵 Musique', true],
+];
+
+const btn = 'px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]';
+const smallBtn = 'w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]';
+const active = 'bg-[var(--accent)] text-white border-[var(--accent)]';
+
+function RailButton({ icon, label, kbd, isActive = false, onClick, title, danger = false }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title || label}
+      className={`relative w-full flex flex-col items-center gap-0.5 py-1.5 rounded border text-[10px] leading-tight ${
+        isActive ? active : danger ? 'border-transparent hover:border-red-400 hover:text-red-500' : 'border-transparent hover:border-[var(--accent)]'
+      }`}
+    >
+      <span className="text-lg leading-none">{icon}</span>
+      <span>{label}</span>
+      {kbd && <span className="absolute top-0.5 right-0.5 text-[8px] font-mono opacity-60">{kbd}</span>}
+    </button>
+  );
+}
+
+// Everything that can be done to one pawn or a whole selection at once: PV, visibility, states,
+// duplicate, delete. Shared by the right-click menu (next to the pawn) and the side panel, so
+// both always offer the exact same actions.
+function SelectionActions({ tokens, onHp, onSetVisible, onToggleStatus, onDuplicate, onDelete, withStates }) {
+  const [hpText, setHpText] = useState('');
+  const withHp = tokens.filter((t) => t.hp_max != null);
+  const anyHidden = tokens.some((t) => !t.visible_to_players);
+  const duplicable = tokens.filter((t) => t.character_id == null);
+
+  const submitHp = (e) => {
+    e.preventDefault();
+    const parsed = parseHpInput(hpText);
+    if (!parsed) return toast.error('Écris 12 (dégâts), +5 (soin) ou =20 (nouvelle valeur)');
+    onHp(withHp, parsed);
+    setHpText('');
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {withHp.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--text-secondary)]">
+            PV {withHp.length === 1 ? `${withHp[0].hp_current}/${withHp[0].hp_max}` : `(${withHp.length} pions)`}
+          </span>
+          <div className="flex gap-1">
+            {[-5, -1, 1, 5].map((d) => (
+              <button key={d} onClick={() => onHp(withHp, { delta: d })} className={`${smallBtn} w-9 text-xs`}>
+                {d > 0 ? `+${d}` : d}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={submitHp} className="flex gap-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={hpText}
+              onChange={(e) => setHpText(e.target.value)}
+              placeholder="12 dégâts · +5 soin · =20"
+              className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
+            />
+            <button type="submit" className="px-2 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">OK</button>
+          </form>
+        </div>
+      )}
+
+      <button onClick={() => onSetVisible(tokens, anyHidden)} className={btn}>
+        {anyHidden ? '👁️ Montrer aux joueurs' : '🙈 Cacher aux joueurs'}<Kbd>H</Kbd>
+      </button>
+
+      {withStates && (
+        <div className="flex flex-wrap gap-1">
+          {STATUS_PRESETS.map(([icon, name]) => {
+            const all = tokens.every((t) => t.status_icons?.includes(icon));
+            return (
+              <button
+                key={icon}
+                onClick={() => onToggleStatus(tokens, icon)}
+                title={name}
+                className={`w-8 h-8 text-base rounded border hover:border-[var(--accent)] ${all ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)]'}`}
+              >
+                {icon}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        {duplicable.length > 0 && (
+          <button onClick={() => onDuplicate(duplicable)} className={`${btn} flex-1`}>📋 Dupliquer</button>
+        )}
+        <button onClick={() => onDelete(tokens)} className="flex-1 px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10">
+          🗑️ Supprimer<Kbd>Suppr</Kbd>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
- * The full GM board-editing UI (toolbar + canvas + side panel) — background, grid, token size,
- * adding pawns/zones, and per-selection controls. Originally lived inline in Board.jsx; extracted
- * so the scenario prep panel (CampaignDetail.jsx) can reuse the exact same editor instead of a
- * stripped-down reimplementation that drifts out of feature parity with the live board.
+ * The full GM board-editing UI. Layout (2026-10-20 redesign, from the GM's own "it's laborious
+ * to find things" feedback): the board takes the whole height; game tools live in a vertical
+ * rail on its left, libraries (enemies, characters, backgrounds, documents, music) in a drawer
+ * that slides over the board's right side instead of pushing the board down, the side panel
+ * shows the selection (or the pawns on the scene when nothing is selected), and a right-click
+ * on a pawn opens the same actions right next to it. Shift-click or a rubber band selects several
+ * pawns, and every action applies to the whole selection.
  *
- * Deliberately data-source agnostic: it never calls the API directly, only the handler props
- * (each mirrors one board.js / scenarios.js endpoint 1:1). The caller owns state — every handler
- * is expected to make its own API call, update the caller's own state with the response, and
- * handle its own errors (toast included), the same way Board.jsx's handlers always have. This
- * component only manages its own UI-only state: what's currently selected, the add-token/library
- * panel toggles. That's what lets the exact same component sit on top of either a live
- * campaign board or a scenario's prep board — the two just wire different handlers to it.
+ * Deliberately data-source agnostic: it never calls the board API directly, only the handler
+ * props (each mirrors one board.js / scenarios.js endpoint 1:1, and resolves once the caller's
+ * state is updated). That's what lets the exact same component sit on top of either a live
+ * campaign board or a scenario's prep board (CampaignDetail.jsx). Group actions call the
+ * per-pawn handlers one after the other, never in parallel: each response is a full board
+ * snapshot that becomes the caller's state, and an earlier one landing late would undo a later
+ * change.
  *
- * withCamera=false (the scenario-prep case) hides the projected-camera frame and its controls
- * entirely — a scenario has no "what's currently on the TV" concept, only the live board does.
+ * withCamera=false (the scenario-prep case) hides what only a live board has: the projected
+ * camera frame, ping, drawing, fog, documents, music and the initiative.
  */
 export default function BoardEditor({
   board, characters = [],
@@ -77,21 +199,26 @@ export default function BoardEditor({
   onNewScene,
   hudPlayers = null, hudEnemies = null,
 }) {
-  // id only (not the token object) — re-derived from the live `board` prop below so the
-  // summary panel keeps tracking PV/PM/Chance as they change (via SSE, e.g. a level-up, or a
-  // teammate's own edit) instead of freezing on whatever the object looked like at selection.
-  const [selectedTokenId, setSelectedTokenId] = useState(null);
-  const selectedToken = board.tokens.find((t) => t.id === selectedTokenId) || null;
+  // Ids only (not token objects) — re-derived from the live `board` prop below so the panels keep
+  // tracking PV/PM as they change (via SSE, a level-up, a teammate's edit) instead of freezing.
+  const [selectedIds, setSelectedIds] = useState([]);
+  const selectedTokens = board.tokens.filter((t) => selectedIds.includes(t.id));
+  const selectedToken = selectedTokens.length === 1 ? selectedTokens[0] : null;
   const [selectedZone, setSelectedZone] = useState(null);
   const [cameraSelected, setCameraSelected] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false);
-  const [showHandoutLibrary, setShowHandoutLibrary] = useState(false);
+  const [menu, setMenu] = useState(null);
+  const [libraryTab, setLibraryTab] = useState(null);
+  const [lastLibraryTab, setLastLibraryTab] = useState('ennemis');
+  const [draggingFromLibrary, setDraggingFromLibrary] = useState(false);
+  const boardAreaRef = useRef(null);
+  const drawerRef = useRef(null);
+  const [popover, setPopover] = useState(null);
   const [uploadingHandout, setUploadingHandout] = useState(false);
   // The library thumbnail is small and cropped (object-cover) — not enough to actually read a
   // letter before deciding to show it. This holds which media is open in the full-size lightbox.
   const [previewHandout, setPreviewHandout] = useState(null);
-  const [showMusicLibrary, setShowMusicLibrary] = useState(false);
   const [uploadingMusic, setUploadingMusic] = useState(false);
+  const [uploadingBg, setUploadingBg] = useState(false);
   const [pingArmed, setPingArmed] = useState(false);
   const [customStatusIcon, setCustomStatusIcon] = useState('');
   const [fogPaintArmed, setFogPaintArmed] = useState(false);
@@ -99,71 +226,15 @@ export default function BoardEditor({
   const [fogBrushRadius, setFogBrushRadius] = useState(2);
   const [drawArmed, setDrawArmed] = useState(false);
   const [drawColor, setDrawColor] = useState('#ef4444');
-  // Local value while dragging the grid-size slider, committed to the API only on release —
-  // same "report once" reasoning as usePositionDrag/useFogPaint, so a fast drag doesn't fire a
-  // PATCH per step (and risk an earlier in-flight response clobbering a later one).
+  // Local value while dragging the grid-size slider, committed to the API only on release, so a
+  // fast drag doesn't fire a PATCH per step (and risk an earlier response clobbering a later one).
   const [liveGridSize, setLiveGridSize] = useState(null);
-
-  // Only one pointer-capturing mode at a time — arming a second one while another is active
-  // would leave two overlays fighting over the same clicks, so picking one always clears the
-  // others rather than stacking.
-  const armPing = () => setPingArmed((v) => { const next = !v; if (next) { setFogPaintArmed(false); setDrawArmed(false); } return next; });
-  const armFogPaint = () => setFogPaintArmed((v) => { const next = !v; if (next) { setPingArmed(false); setDrawArmed(false); } return next; });
-  const armDraw = () => setDrawArmed((v) => { const next = !v; if (next) { setPingArmed(false); setFogPaintArmed(false); } return next; });
-
-  // Session shortcuts (P/F/D/N/G/Esc) — skipped while typing in a field so they don't hijack
-  // the "Nom du pion" input or the fog brush size select. Grid (G) and Escape work in scenario
-  // prep too; the rest are live-board-only concepts, same gating as their buttons.
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      switch (e.key.toLowerCase()) {
-        case 'g':
-          onToggleGrid();
-          break;
-        case 'l':
-          onToggleLabels();
-          break;
-        case 'escape':
-          setPingArmed(false);
-          setFogPaintArmed(false);
-          setDrawArmed(false);
-          setSelectedTokenId(null);
-          setSelectedZone(null);
-          setCameraSelected(false);
-          setPreviewHandout(null);
-          break;
-        case 'p':
-          if (withCamera) armPing();
-          break;
-        case 'f':
-          if (withCamera) onUpdateFog({ fog_enabled: !board.fog_enabled });
-          break;
-        case 'd':
-          if (withCamera) armDraw();
-          break;
-        case 'n':
-          if (withCamera && board.tokens.some((t) => t.character_id != null)) onInitiativeNext();
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [withCamera, board.fog_enabled, board.tokens]);
   const [newTokenLabel, setNewTokenLabel] = useState('');
   const [newTokenHp, setNewTokenHp] = useState('');
   const [newTokenOwnerId, setNewTokenOwnerId] = useState(null);
-  const [uploadingBg, setUploadingBg] = useState(false);
   // Global reference data (same for every campaign), not board state — fetched here directly
-  // rather than threaded through props, same reasoning as CharacterSheet.jsx fetching
-  // rules_voies/rules_armures itself instead of the caller owning them.
+  // rather than threaded through props, same reasoning as CharacterSheet.jsx's rules fetches.
   const [monstres, setMonstres] = useState([]);
-  const [showMonsterLibrary, setShowMonsterLibrary] = useState(false);
   const [monsterSearch, setMonsterSearch] = useState('');
   const [editingMonstreId, setEditingMonstreId] = useState(null);
   const [monsterQuantity, setMonsterQuantity] = useState(1);
@@ -172,11 +243,156 @@ export default function BoardEditor({
     getMonstres().then(setMonstres).catch((e) => toast.error(e.message));
   }, []);
 
+  const noToolArmed = !pingArmed && !fogPaintArmed && !drawArmed;
+
+  // Only one pointer-capturing mode at a time — arming a second one while another is active
+  // would leave two overlays fighting over the same clicks, so picking one clears the others.
+  const disarmAll = () => { setPingArmed(false); setFogPaintArmed(false); setDrawArmed(false); };
+  const armPing = () => setPingArmed((v) => { const next = !v; if (next) { setFogPaintArmed(false); setDrawArmed(false); } return next; });
+  const armFogPaint = () => setFogPaintArmed((v) => { const next = !v; if (next) { setPingArmed(false); setDrawArmed(false); } return next; });
+  const armDraw = () => setDrawArmed((v) => { const next = !v; if (next) { setPingArmed(false); setFogPaintArmed(false); } return next; });
+
+  const clearSelection = () => { setSelectedIds([]); setSelectedZone(null); setCameraSelected(false); };
+  const openLibrary = (tab) => {
+    setLibraryTab((current) => (current === tab ? null : tab));
+    setLastLibraryTab(tab);
+  };
+
+  const selectToken = (token, e) => {
+    setCameraSelected(false);
+    setSelectedZone(null);
+    setSelectedIds((ids) => {
+      if (!e?.shiftKey) return [token.id];
+      return ids.includes(token.id) ? ids.filter((id) => id !== token.id) : [...ids, token.id];
+    });
+  };
+
+  const handleMarqueeSelect = (rect, additive) => {
+    const inside = board.tokens
+      .filter((t) => t.x >= rect.x1 && t.x <= rect.x2 && t.y >= rect.y1 && t.y <= rect.y2)
+      .map((t) => t.id);
+    setSelectedZone(null);
+    setCameraSelected(false);
+    setSelectedIds((ids) => (additive ? [...new Set([...ids, ...inside])] : inside));
+  };
+
+  const handleTokenContextMenu = (token, x, y) => {
+    if (!selectedIds.includes(token.id)) setSelectedIds([token.id]);
+    setSelectedZone(null);
+    setCameraSelected(false);
+    setMenu({ x, y });
+  };
+
+  // --- Group actions (sequential on purpose, see the component docstring) ---
+
+  const runEach = async (items, fn) => {
+    for (const item of items) await fn(item);
+  };
+
+  const applyHp = (tokens, { delta, set }) => runEach(tokens, (t) => {
+    const d = set != null ? set - t.hp_current : delta;
+    return d ? onTokenHpChange(t.id, d) : null;
+  });
+
+  const setVisible = (tokens, visible) => runEach(
+    tokens.filter((t) => t.visible_to_players !== visible),
+    (t) => onToggleTokenVisible(t),
+  );
+
+  const toggleStatus = (tokens, icon) => {
+    const all = tokens.every((t) => t.status_icons?.includes(icon));
+    return runEach(tokens, (t) => {
+      const current = t.status_icons || [];
+      if (all) return onTokenStatusIconsChange(t, current.filter((i) => i !== icon));
+      return current.includes(icon) ? null : onTokenStatusIconsChange(t, [...current, icon]);
+    });
+  };
+
+  const nextLabel = (label, taken) => {
+    const base = label.replace(/\s+\d+$/, '');
+    let n = 2;
+    while (taken.has(`${base} ${n}`)) n++;
+    taken.add(`${base} ${n}`);
+    return `${base} ${n}`;
+  };
+
+  const duplicate = async (tokens) => {
+    const taken = new Set(board.tokens.map((t) => t.label));
+    const before = new Set(board.tokens.map((t) => t.id));
+    let last = null;
+    for (const t of tokens) {
+      last = await onAddToken(nextLabel(t.label, taken), t.hp_max ?? undefined, t.owner_character_id ?? null,
+        t.monstre_id ?? null, clampPct(t.x + 4), clampPct(t.y + 4)) || last;
+    }
+    if (last?.tokens) setSelectedIds(last.tokens.filter((t) => !before.has(t.id)).map((t) => t.id));
+  };
+
+  const deleteTokens = async (tokens) => {
+    if (!tokens.length) return;
+    if (tokens.length > 1 && !window.confirm(`Supprimer ces ${tokens.length} pions ?`)) return;
+    setMenu(null);
+    setSelectedIds([]);
+    await runEach(tokens, (t) => onDeleteToken(t));
+  };
+
+  // Dragging a pawn that's part of a selection moves the whole selection by the same offset.
+  // A press without movement reports the same position: nothing to send then.
+  const handleTokenMoved = async (tokenId, x, y) => {
+    const token = board.tokens.find((t) => t.id === tokenId);
+    if (!token) return;
+    const dx = x - token.x;
+    const dy = y - token.y;
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+    const group = selectedIds.includes(tokenId) && selectedTokens.length > 1 ? selectedTokens : [token];
+    await runEach(group, (t) => onMoveToken(t.id, clampPct(t.x + dx), clampPct(t.y + dy)));
+  };
+
+  // Session shortcuts — skipped while typing in a field so they don't hijack an input. Grid,
+  // labels, selection and Escape work in scenario prep too; the rest are live-board concepts.
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key.toLowerCase()) {
+        case 'g': onToggleGrid(); break;
+        case 'l': onToggleLabels(); break;
+        // preventDefault: the drawer's search field takes the focus, the key must not type a 'b' into it
+        case 'b': e.preventDefault(); openLibrary(libraryTab || lastLibraryTab); break;
+        case 'v': disarmAll(); break;
+        case 'escape':
+          disarmAll();
+          clearSelection();
+          setMenu(null);
+          setPopover(null);
+          setLibraryTab(null);
+          setPreviewHandout(null);
+          break;
+        case 'delete':
+        case 'backspace':
+          if (selectedTokens.length) { e.preventDefault(); deleteTokens(selectedTokens); }
+          break;
+        case 'h':
+          if (selectedTokens.length) setVisible(selectedTokens, selectedTokens.some((t) => !t.visible_to_players));
+          break;
+        case 'p': if (withCamera) armPing(); break;
+        case 'f': if (withCamera) onUpdateFog({ fog_enabled: !board.fog_enabled }); break;
+        case 'd': if (withCamera) armDraw(); break;
+        case 'n': if (withCamera && board.tokens.some((t) => t.character_id != null)) onInitiativeNext(); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [withCamera, board.fog_enabled, board.tokens, selectedIds, libraryTab, lastLibraryTab]);
+
   // Kept in separate buckets so picking a fond never surfaces a handout letter (or vice versa) —
   // both are 'image'-mimetype uploads, only board_media.type (set by which uploader was used)
   // tells them apart.
   const backgroundMedia = mediaLibrary.filter((m) => m.type === 'image' || m.type === 'video');
   const handoutMedia = mediaLibrary.filter((m) => m.type === 'handout');
+  const musicMedia = mediaLibrary.filter((m) => m.type === 'audio');
 
   const tokenlessCharacters = characters.filter((c) => !board.tokens.some((t) => t.character_id === c.id));
   // The "Golem" capacité (which grants the actual construct, p.176 rules_capacites) only
@@ -184,35 +400,64 @@ export default function BoardEditor({
   const golemCharacters = characters.filter((c) => c.golem_rang >= 2);
 
   // Pre-fills the pawn form instead of creating the token directly — niveau×5 is only the base
-  // PV formula (p.176 rules_capacites); the rang-5 "Golem supérieur" upgrade "Grande taille"
-  // adds +2 PV/niveau on top, and there's no structured field anywhere for which upgrade (of
-  // 8 possible) a character picked. Landing the base value in the already-editable PV field
-  // lets the GM bump it by hand for that case instead of the button silently getting it wrong.
+  // PV formula (p.176 rules_capacites); the rang-5 "Golem supérieur" upgrade can add more, and
+  // there's no structured field for it, so the GM gets an editable value instead of a wrong one.
   const handleAddGolem = (character) => {
     setNewTokenLabel(`Golem de ${character.name}`);
     setNewTokenHp(String(character.level * 5));
     setNewTokenOwnerId(character.id);
   };
 
-  // Unlike the golem shortcut, a bestiary monster's stats are fixed and known in advance —
-  // nothing ambiguous to adjust before creating, so this creates the pawn(s) directly instead
-  // of pre-filling the form for the GM to tweak. Sequential (not Promise.all): each onAddToken
-  // call's response is a full board snapshot that becomes the caller's new state, so firing
-  // them in parallel risks an earlier response landing after a later one and wiping out
-  // whichever pawn it hadn't seen yet.
-  const handleAddMonstre = async (monstre) => {
-    const positions = spreadPositions(monsterQuantity);
-    for (let i = 0; i < positions.length; i++) {
-      const label = monsterQuantity > 1 ? `${monstre.name} ${i + 1}` : monstre.name;
-      await onAddToken(label, monstre.pv, null, monstre.id, positions[i].x, positions[i].y);
-    }
-    setShowMonsterLibrary(false);
-    setMonsterSearch('');
+  // A bestiary monster's stats are fixed and known in advance, so this creates the pawn(s)
+  // directly, around the drop point (or the board's center for a plain click). They spawn
+  // hidden (an ambush isn't a surprise otherwise) and come out selected, so H reveals the whole
+  // group at once.
+  const visibleCenterX = () => {
+    const area = boardAreaRef.current?.getBoundingClientRect();
+    const drawer = drawerRef.current?.getBoundingClientRect();
+    if (!area || !drawer) return 50;
+    return Math.max(10, ((area.width - drawer.width) / 2 / area.width) * 100);
   };
 
+  const handleAddMonstre = async (monstre, x = visibleCenterX(), y = 50) => {
+    const before = new Set(board.tokens.map((t) => t.id));
+    const positions = spreadPositions(monsterQuantity, x, y);
+    let last = null;
+    for (let i = 0; i < positions.length; i++) {
+      const label = monsterQuantity > 1 ? `${monstre.name} ${i + 1}` : monstre.name;
+      last = await onAddToken(label, monstre.pv, null, monstre.id, positions[i].x, positions[i].y) || last;
+    }
+    if (last?.tokens) {
+      setSelectedZone(null);
+      setCameraSelected(false);
+      setSelectedIds(last.tokens.filter((t) => !before.has(t.id)).map((t) => t.id));
+    }
+  };
+
+  const handleDropItem = (item, x, y) => {
+    setDraggingFromLibrary(false);
+    if (item.kind === 'monstre') {
+      const monstre = monstres.find((m) => m.id === item.id);
+      if (monstre) handleAddMonstre(monstre, x, y);
+    } else if (item.kind === 'character') {
+      const character = characters.find((c) => c.id === item.id);
+      if (character) onAddCharacterToken(character, x, y);
+    }
+  };
+
+  const dragProps = (item) => ({
+    draggable: true,
+    onDragStart: (e) => {
+      e.dataTransfer.setData(BOARD_DRAG_MIME, JSON.stringify(item));
+      e.dataTransfer.effectAllowed = 'copy';
+      // Let the drawer fade out of the way only once the browser has captured the drag image.
+      setTimeout(() => setDraggingFromLibrary(true), 0);
+    },
+    onDragEnd: () => setDraggingFromLibrary(false),
+  });
+
   // The bestiary is global reference data, not board state — edited in place here (rather than
-  // through a handler prop like every other panel above) since it's the same for every campaign
-  // and already fetched directly by this component, same reasoning as the fetch itself.
+  // through a handler prop) since it's the same for every campaign and fetched by this component.
   const handleMonstreEmojiBlur = (monstre, e) => {
     const emoji = e.target.value.trim();
     if (emoji === (monstre.emoji || '')) return;
@@ -227,50 +472,16 @@ export default function BoardEditor({
       .catch((err) => toast.error(err.message));
   };
 
-  const handleBackgroundUpload = async (e) => {
+  const withUpload = (setBusy, upload) => async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingBg(true);
+    setBusy(true);
     try {
-      await onUploadBackground(file);
+      await upload(file);
     } finally {
-      setUploadingBg(false);
+      setBusy(false);
       e.target.value = '';
     }
-  };
-
-  const handlePickMedia = async (media) => {
-    await onPickBackground(media);
-    setShowLibrary(false);
-  };
-
-  const handleHandoutUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingHandout(true);
-    try {
-      await onUploadHandoutMedia(file);
-    } finally {
-      setUploadingHandout(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleMusicUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingMusic(true);
-    try {
-      await onUploadMusic(file);
-    } finally {
-      setUploadingMusic(false);
-      e.target.value = '';
-    }
-  };
-
-  const handlePickMusic = async (media) => {
-    await onPickMusic(media);
-    setShowMusicLibrary(false);
   };
 
   const handleAddToken = (e) => {
@@ -282,33 +493,20 @@ export default function BoardEditor({
     setNewTokenOwnerId(null);
   };
 
-  // hp_delta applies server-side atomically (see board.js's PATCH /board/tokens/:tokenId) —
-  // selectedToken re-derives from the response once the caller's board state updates (it's now
-  // id-based, see selectedTokenId above), so repeated +/- clicks read the actual persisted value,
-  // same pattern as the zone panel's own handlePatchZone.
-  const handleTokenHp = (delta) => onTokenHpChange(selectedToken.id, delta);
-  const handleToggleHideHp = () => onToggleTokenHideHp(selectedToken);
-  // Saved on blur (not on every keystroke) — same pattern as CharacterSheet.jsx's description/
-  // équipement free-text fields, no reason to fire a request per character typed.
+  // Saved on blur (not on every keystroke) — same pattern as CharacterSheet.jsx's free-text
+  // fields, no reason to fire a request per character typed.
   const handlePlayerHpLabelBlur = (e) => onTokenPlayerLabelChange(selectedToken, e.target.value.trim());
-
-  const handleToggleStatusIcon = (icon) => {
-    const current = selectedToken.status_icons || [];
-    const next = current.includes(icon) ? current.filter((i) => i !== icon) : [...current, icon];
-    onTokenStatusIconsChange(selectedToken, next);
-  };
 
   const handleAddCustomStatusIcon = (e) => {
     e.preventDefault();
     const icon = customStatusIcon.trim();
-    if (!icon) return;
+    if (!icon || !selectedToken) return;
     onTokenStatusIconsChange(selectedToken, [...(selectedToken.status_icons || []), icon]);
     setCustomStatusIcon('');
   };
 
   // Merges the cells just painted into the board's own persisted set before sending the full
-  // array — board.fog_revealed is already in hand via the `board` prop, no need for the caller
-  // to know fog's own merge rules.
+  // array — board.fog_revealed is already in hand, no need for the caller to know fog's rules.
   const handleFogPaint = (cells, mode) => {
     const current = new Set(board.fog_revealed || []);
     if (mode === 'hide') cells.forEach((c) => current.delete(c));
@@ -316,644 +514,92 @@ export default function BoardEditor({
     onUpdateFog({ fog_revealed: [...current] });
   };
 
-  const handleToggleTokenVisible = (token) => {
-    onToggleTokenVisible(token);
-    setSelectedTokenId(null);
-  };
-
-  const handleDeleteToken = (token) => {
-    onDeleteToken(token);
-    setSelectedTokenId(null);
-  };
-
   const handleAddZone = async (shape) => {
+    setPopover(null);
     const updated = await onAddZone(shape);
     // New zones always spawn at the board's center (50/50) — exactly where the camera frame
-    // usually sits too, so without auto-selecting it the GM has no way to grab it out from
-    // under the frame (zones have no HUD card to click, unlike tokens).
+    // usually sits too, so auto-selecting it is the only easy way to grab it from under the frame.
     setCameraSelected(false);
-    setSelectedTokenId(null);
+    setSelectedIds([]);
     setSelectedZone(updated.zones[updated.zones.length - 1]);
   };
 
-  // onPatchZone resolves with the full updated board/scenario (like every other handler here) —
-  // selectedZone is re-synced from it (not just left as the pre-patch object) because, unlike
-  // the token panel, this one binds a live control straight to mutable zone fields (the color
-  // swatch's value): leaving selectedZone stale would show the color that was just replaced.
+  // Re-synced from the response (not left as the pre-patch object): the color swatch binds
+  // straight to selectedZone, a stale object would show the color that was just replaced.
   const handlePatchZone = async (data) => {
     const updated = await onPatchZone(selectedZone.id, data);
     setSelectedZone(updated.zones.find((z) => z.id === selectedZone.id) || null);
   };
-
-  const handleToggleZoneVisible = () => handlePatchZone({ visible_to_players: !selectedZone.visible_to_players });
-  const handleZoneColor = (e) => handlePatchZone({ color: e.target.value });
-  const handleZoneSize = (delta) => handlePatchZone({ size_delta: delta });
-  const handleZoneWidth = (delta) => handlePatchZone({ width_delta: delta });
-  const handleZoneRotation = (delta) => handlePatchZone({ rotation_delta: delta });
 
   const handleDeleteZone = () => {
     onDeleteZone(selectedZone);
     setSelectedZone(null);
   };
 
+  const actionProps = {
+    onHp: applyHp,
+    onSetVisible: setVisible,
+    onToggleStatus: toggleStatus,
+    onDuplicate: duplicate,
+    onDelete: deleteTokens,
+    withStates: withCamera,
+  };
+
+  const statusChip = (on, children, onClick, title) => (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`px-2.5 py-1 text-xs rounded-full border ${on ? 'border-[var(--accent)] text-[var(--accent)] font-medium' : 'border-[var(--border)] text-[var(--text-secondary)]'} hover:border-[var(--accent)]`}
+    >
+      {children}
+    </button>
+  );
+
+  const scenePawns = [
+    ['Personnages', board.tokens.filter((t) => t.character_id && !t.is_npc)],
+    ['Visibles des joueurs', board.tokens.filter((t) => !(t.character_id && !t.is_npc) && t.visible_to_players)],
+    ['Cachés', board.tokens.filter((t) => !(t.character_id && !t.is_npc) && !t.visible_to_players)],
+  ];
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
-        {/* At-a-glance scene status — the toggle buttons below get buried once several are
-            active at once (fog + music + a handout all highlighted looks the same as one),
-            so this line spells out what's currently live without hunting through the toolbar. */}
+    // select-none: a rubber-band drag across the board must not highlight the page's text (inputs stay editable)
+    <div className={`flex flex-col gap-2 select-none ${withCamera ? 'h-[calc(100dvh-9rem)]' : 'h-[78vh]'} min-h-[30rem]`}>
+      {/* What the players currently get, at a glance and one click away from changing it. */}
+      <div className="flex flex-wrap items-center gap-1.5">
         {withCamera && (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
-            <span className={board.fog_enabled ? 'font-medium text-[var(--accent)]' : ''}>
-              🌫️ Brouillard {board.fog_enabled ? 'actif' : 'inactif'}
-            </span>
-            <span className="opacity-40">·</span>
-            <span className={board.music_url ? 'font-medium text-[var(--accent)]' : ''}>
-              🎵 {board.music_url ? (board.music_playing ? 'musique en cours' : 'musique en pause') : 'aucune musique'}
-            </span>
-            <span className="opacity-40">·</span>
-            <span className={board.handout_url ? 'font-medium text-[var(--accent)]' : ''}>
-              📄 {board.handout_url ? 'document affiché aux joueurs' : 'aucun document affiché'}
-            </span>
-            <span className="opacity-40">·</span>
-            <span className={board.initiative_visible ? 'font-medium text-[var(--accent)]' : ''}>
-              ⚔️ initiative {board.initiative_visible ? 'visible' : 'cachée'} des joueurs
-            </span>
-            <span className="opacity-40">·</span>
-            <span>⌨️ Échap pour annuler l'outil actif / la sélection</span>
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] shrink-0">
-            Décor
-          </span>
-
-          <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
-            {uploadingBg ? 'Envoi...' : 'Envoyer un fond (image ou vidéo)'}
-            <input
-              type="file"
-              accept="image/*,video/mp4"
-              onChange={handleBackgroundUpload}
-              className="hidden"
-              disabled={uploadingBg}
-            />
-          </label>
-
-          <button
-            onClick={() => setShowLibrary((v) => !v)}
-            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            Bibliothèque ({backgroundMedia.length})
-          </button>
-
-          {withCamera && (
-            <button
-              onClick={() => setShowHandoutLibrary((v) => !v)}
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-            >
-              📄 Documents ({handoutMedia.length})
-            </button>
-          )}
-
-          {withCamera && (
-            <button
-              onClick={() => setShowMusicLibrary((v) => !v)}
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-            >
-              🎵 Musique ({mediaLibrary.filter((m) => m.type === 'audio').length})
-            </button>
-          )}
-
-          {/* Only rendered once a track is actually picked — nothing to play/pause/clear before
-              that. Volume/playing state lives on board_states itself (not local UI state) so it's
-              the same for every viewer of the projector, not just whichever browser last touched
-              the slider. */}
-          {withCamera && board.music_url && (
-            <div className="flex items-center gap-1.5 px-2 py-1 text-sm border border-[var(--border)] rounded">
-              <button
-                onClick={() => onUpdateMusic({ music_playing: !board.music_playing })}
-                title={board.music_playing ? 'Mettre en pause' : 'Lire'}
-                className="w-7 h-7 rounded hover:bg-[var(--bg-input)]"
-              >
-                {board.music_playing ? '⏸️' : '▶️'}
-              </button>
-              <span className="text-[var(--text-secondary)]" title="🔊 Volume">🔊</span>
-              <input
-                type="range" min="0" max="1" step="0.05"
-                value={board.music_volume ?? 0.5}
-                onChange={(e) => onUpdateMusic({ music_volume: parseFloat(e.target.value) })}
-                className="w-20"
-              />
-              <button
-                onClick={() => onUpdateMusic({ music_url: '', music_playing: false })}
-                title="Arrêter la musique"
-                className="w-7 h-7 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-        </div>
-
-        {withCamera && (
-          <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-[var(--border)]">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] shrink-0">
-              Outils de session
-            </span>
-
-            <button
-              onClick={armPing}
-              title="Le prochain clic sur le plateau montre un repère à tout le monde"
-              className={`px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${
-                pingArmed ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
-              }`}
-            >
-              📍 Pointeur<Kbd>P</Kbd>
-            </button>
-
-            <button
-              onClick={() => onUpdateFog({ fog_enabled: !board.fog_enabled })}
-              className={`px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${
-                board.fog_enabled ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)]'
-              }`}
-            >
-              🌫️ Brouillard<Kbd>F</Kbd>
-            </button>
-
-            {board.fog_enabled && (
-              <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
-                <button
-                  onClick={armFogPaint}
-                  className={`px-2 py-1 rounded ${fogPaintArmed ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}
-                >
-                  🖌️ Peindre
+          <>
+            {statusChip(board.fog_enabled, <>🌫️ Brouillard {board.fog_enabled ? 'actif' : 'inactif'}<Kbd>F</Kbd></>,
+              () => onUpdateFog({ fog_enabled: !board.fog_enabled }), 'Activer / couper le brouillard')}
+            {board.music_url ? (
+              <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-[var(--accent)] text-[var(--accent)]">
+                <button onClick={() => onUpdateMusic({ music_playing: !board.music_playing })} title={board.music_playing ? 'Mettre en pause' : 'Lire'}>
+                  {board.music_playing ? '⏸️' : '▶️'}
                 </button>
-                {fogPaintArmed && (
-                  <>
-                    <select
-                      value={fogBrushMode}
-                      onChange={(e) => setFogBrushMode(e.target.value)}
-                      className="px-1 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-                    >
-                      <option value="reveal">Révéler</option>
-                      <option value="hide">Masquer</option>
-                    </select>
-                    <span className="pl-1 text-[var(--text-secondary)]">Taille</span>
-                    <button onClick={() => setFogBrushRadius((r) => Math.max(1, r - 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">−</button>
-                    <button onClick={() => setFogBrushRadius((r) => Math.min(6, r + 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">+</button>
-                  </>
-                )}
-                <button
-                  onClick={() => onUpdateFog({ fog_revealed: [] })}
-                  title="Tout masquer"
-                  className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
-                >
-                  Tout masquer
-                </button>
-                <button
-                  onClick={() => onUpdateFog({ fog_revealed: Array.from({ length: FOG_COLS * FOG_ROWS }, (_, i) => i) })}
-                  title="Tout révéler"
-                  className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]"
-                >
-                  Tout révéler
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
-              <button
-                onClick={armDraw}
-                className={`px-2 py-1 rounded ${drawArmed ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}
-              >
-                ✏️ Dessiner<Kbd>D</Kbd>
-              </button>
-              {drawArmed && (
+                🎵
                 <input
-                  type="color"
-                  value={drawColor}
-                  onChange={(e) => setDrawColor(e.target.value)}
-                  className="w-7 h-7 rounded border border-[var(--border)]"
+                  type="range" min="0" max="1" step="0.05"
+                  value={board.music_volume ?? 0.5}
+                  onChange={(e) => onUpdateMusic({ music_volume: parseFloat(e.target.value) })}
+                  className="w-16"
+                  title="Volume"
                 />
-              )}
-              {board.drawings?.length > 0 && (
-                <>
-                  <button onClick={onUndoDrawing} title="Annuler le dernier trait" className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">
-                    ↩︎
-                  </button>
-                  <button onClick={onClearDrawings} title="Tout effacer" className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">
-                    🗑️
-                  </button>
-                </>
-              )}
-            </div>
-
-            {board.handout_url && (
-              <div className="flex items-center gap-1.5 px-2 py-1 text-sm border border-[var(--border)] rounded">
-                <span>🖼️ Document affiché</span>
-                <button onClick={onHideHandout} className="px-2 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]">
-                  Masquer
-                </button>
-              </div>
-            )}
-
-            <button
-              onClick={() => {
-                if (window.confirm('Vider le plateau (pions, zones, brouillard, dessins, document affiché) ? Le fond, la musique et la caméra sont conservés.')) {
-                  onNewScene();
-                }
-              }}
-              title="Vide pions/zones/brouillard/dessins/document, garde le fond et la musique"
-              className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-red-400 hover:text-red-500"
-            >
-              🆕 Nouvelle scène
-            </button>
-          </div>
+                <button onClick={() => onUpdateMusic({ music_url: '', music_playing: false })} title="Arrêter la musique" className="text-[var(--text-secondary)]">✕</button>
+              </span>
+            ) : statusChip(false, '🎵 Aucune musique', () => openLibrary('musique'), 'Choisir une musique')}
+            {board.handout_url
+              ? statusChip(true, '📄 Document affiché · Masquer', onHideHandout, 'Retirer le document de l\'écran des joueurs')
+              : statusChip(false, '📄 Aucun document', () => openLibrary('documents'), 'Montrer un document')}
+            {statusChip(board.initiative_visible, `⚔️ Initiative ${board.initiative_visible ? 'visible' : 'cachée'} au projecteur`,
+              () => onInitiativeVisibleChange(!board.initiative_visible), 'Afficher / cacher l\'ordre de jeu sur le projecteur')}
+          </>
         )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-[var(--border)]">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] shrink-0">
-            Plateau
-          </span>
-
-          <button
-            onClick={() => setShowMonsterLibrary((v) => !v)}
-            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            🗡️ Bibliothèque d'ennemis ({monstres.length})
-          </button>
-
-          <button
-            onClick={onToggleGrid}
-            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            {board.grid_visible ? 'Masquer la grille' : 'Afficher la grille'}<Kbd>G</Kbd>
-          </button>
-
-          {board.grid_visible && (
-            <div className="flex items-center gap-1.5 px-2 text-sm border border-[var(--border)] rounded">
-              <span className="text-[var(--text-secondary)]">Cases</span>
-              <input
-                type="range"
-                min="6"
-                max="60"
-                value={liveGridSize ?? board.grid_size ?? 20}
-                onChange={(e) => setLiveGridSize(Number(e.target.value))}
-                onMouseUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
-                onTouchEnd={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
-                onKeyUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
-                className="w-24"
-              />
-              <span className="w-6 text-right">{liveGridSize ?? board.grid_size ?? 20}</span>
-            </div>
-          )}
-
-          <button
-            onClick={onToggleLabels}
-            title="Cacher/montrer le nom écrit sous chaque pion — utile quand plusieurs pions se chevauchent en combat"
-            className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-          >
-            {board.labels_visible === false ? 'Afficher les noms' : 'Masquer les noms'}<Kbd>L</Kbd>
-          </button>
-
-          {withCamera && (
-            <label className="flex items-center gap-1.5 text-sm px-1">
-              <input
-                type="checkbox"
-                checked={board.initiative_visible}
-                onChange={(e) => onInitiativeVisibleChange(e.target.checked)}
-              />
-              Afficher l'initiative sur le projecteur
-            </label>
-          )}
-
-          <div className="flex items-center gap-1 px-1 text-sm border border-[var(--border)] rounded">
-            <span className="pl-1 text-[var(--text-secondary)]">Taille des pions</span>
-            <button onClick={() => onTokenSize(-8)} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">−</button>
-            <button onClick={() => onTokenSize(8)} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">+</button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-[var(--border)]">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] shrink-0">
-            Ajouter
-          </span>
-
-          <form onSubmit={handleAddToken} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Nom du pion"
-              value={newTokenLabel}
-              onChange={(e) => { setNewTokenLabel(e.target.value); setNewTokenOwnerId(null); }}
-              className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-            />
-            <input
-              type="number"
-              min="1"
-              placeholder="PV (optionnel)"
-              title="Pour un pion-créature (golem, familier...) avec sa propre barre de vie"
-              value={newTokenHp}
-              onChange={(e) => setNewTokenHp(e.target.value)}
-              className="w-28 px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-            />
-            <button type="submit" className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]">
-              Ajouter un pion
-            </button>
-          </form>
-
-          {tokenlessCharacters.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {tokenlessCharacters.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => onAddCharacterToken(c)}
-                  className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                >
-                  + {c.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {golemCharacters.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {golemCharacters.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => handleAddGolem(c)}
-                  title={`Pré-remplit le formulaire ci-dessus avec "Golem de ${c.name}" et ${c.level * 5} PV (niveau × 5) — ajuste le nombre de PV si le golem a été amélioré (rang 5), puis clique "Ajouter un pion"`}
-                  className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                >
-                  + 🗿 Golem ({c.name})
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-1">
-            {ZONE_SHAPES.map(([shape, label]) => (
-              <button
-                key={shape}
-                onClick={() => handleAddZone(shape)}
-                className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
-              >
-                + Zone : {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showLibrary && (
-        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
-          <h3 className="font-semibold mb-2 text-sm">Bibliothèque de fonds</h3>
-          {backgroundMedia.length === 0 ? (
-            <p className="text-sm text-[var(--text-secondary)]">Aucun fond envoyé pour l'instant.</p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {backgroundMedia.map((media) => (
-                <div key={media.id} className="w-28 flex flex-col gap-1">
-                  <button
-                    onClick={() => handlePickMedia(media)}
-                    className="w-28 h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 flex items-center justify-center"
-                  >
-                    {media.type === 'video' ? (
-                      <video src={media.url} className="w-full h-full object-cover" muted />
-                    ) : (
-                      <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
-                    )}
-                  </button>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
-                      {media.type === 'video' ? '🎬 ' : '🖼 '}{media.label}
-                    </span>
-                    <button
-                      onClick={() => onDeleteMedia(media)}
-                      className="text-[10px] text-red-500 hover:underline shrink-0"
-                    >
-                      suppr.
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {withCamera && showHandoutLibrary && (
-        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-sm">📄 Bibliothèque de documents</h3>
-            <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
-              {uploadingHandout ? 'Envoi...' : 'Envoyer un document'}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleHandoutUpload}
-                className="hidden"
-                disabled={uploadingHandout}
-              />
-            </label>
-          </div>
-          {handoutMedia.length === 0 ? (
-            <p className="text-sm text-[var(--text-secondary)]">Aucun document envoyé pour l'instant.</p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {handoutMedia.map((media) => (
-                <div key={media.id} className="w-28 flex flex-col gap-1">
-                  <button
-                    onClick={() => setPreviewHandout(media)}
-                    title="Aperçu avant de le montrer aux joueurs"
-                    className="relative w-28 h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 flex items-center justify-center group"
-                  >
-                    <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition-colors">
-                      <span className="opacity-0 group-hover:opacity-100 text-lg">👁️</span>
-                    </span>
-                  </button>
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
-                      📄 {media.label}
-                    </span>
-                    <button
-                      onClick={() => onDeleteMedia(media)}
-                      className="text-[10px] text-red-500 hover:underline shrink-0"
-                    >
-                      suppr.
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => onShowHandout(media.url)}
-                    className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                  >
-                    📢 Montrer aux joueurs
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {previewHandout && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6"
-          onClick={() => setPreviewHandout(null)}
+        <button
+          onClick={() => openLibrary(libraryTab || lastLibraryTab)}
+          className={`ml-auto px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${libraryTab ? active : 'border-[var(--border)]'}`}
         >
-          <div className="flex flex-col gap-2 max-w-3xl max-h-full" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={previewHandout.url}
-              alt={previewHandout.label}
-              className="max-w-full max-h-[80vh] object-contain rounded-lg border-2 border-[var(--accent)] shadow-2xl"
-            />
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-white/80 truncate">{previewHandout.label}</span>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => { onShowHandout(previewHandout.url); setPreviewHandout(null); }}
-                  className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                >
-                  📢 Montrer aux joueurs
-                </button>
-                <button
-                  onClick={() => setPreviewHandout(null)}
-                  className="px-3 py-1.5 text-sm rounded border border-white/30 text-white hover:bg-white/10"
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {withCamera && showMusicLibrary && (
-        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-sm">🎵 Bibliothèque de musique</h3>
-            <label className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
-              {uploadingMusic ? 'Envoi...' : 'Envoyer une piste'}
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={handleMusicUpload}
-                className="hidden"
-                disabled={uploadingMusic}
-              />
-            </label>
-          </div>
-          {mediaLibrary.filter((m) => m.type === 'audio').length === 0 ? (
-            <p className="text-sm text-[var(--text-secondary)]">Aucune piste envoyée pour l'instant.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {mediaLibrary.filter((m) => m.type === 'audio').map((media) => (
-                <div key={media.id} className="flex flex-wrap items-center gap-2 p-2 rounded border border-[var(--border)]">
-                  <span className="text-sm truncate flex-1 min-w-[8rem]" title={media.label}>🎵 {media.label}</span>
-                  <audio src={media.url} controls className="h-8 max-w-full" />
-                  <button
-                    onClick={() => handlePickMusic(media)}
-                    className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                  >
-                    Utiliser
-                  </button>
-                  <button
-                    onClick={() => onDeleteMedia(media)}
-                    className="text-[10px] text-red-500 hover:underline shrink-0"
-                  >
-                    suppr.
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {showMonsterLibrary && (
-        <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="font-semibold text-sm">🗡️ Bibliothèque d'ennemis</h3>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-                Quantité
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={monsterQuantity}
-                  onChange={(e) => setMonsterQuantity(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
-                  className="w-14 px-1.5 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-                />
-              </label>
-              <input
-                type="text"
-                placeholder="Rechercher (ex: gobelin, ours...)"
-                value={monsterSearch}
-                onChange={(e) => setMonsterSearch(e.target.value)}
-                className="px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-              />
-            </div>
-          </div>
-          {Object.entries(MONSTRE_CATEGORY_LABELS).map(([cat, label]) => {
-            const inCategory = monstres.filter((m) => m.category === cat
-              && m.name.toLowerCase().includes(monsterSearch.trim().toLowerCase()));
-            if (inCategory.length === 0) return null;
-            return (
-              <div key={cat}>
-                <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">{label}</h4>
-                <div className="flex flex-wrap gap-1">
-                  {inCategory.map((m) => (
-                    <div key={m.id} className="flex flex-col gap-1">
-                      <div className="flex items-stretch">
-                        <button
-                          onClick={() => handleAddMonstre(m)}
-                          title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}${monsterQuantity > 1 ? ` · ajoute ${monsterQuantity} pions` : ''}`}
-                          className="px-2 py-1 text-xs rounded-l border border-[var(--border)] hover:border-[var(--accent)]"
-                        >
-                          + {m.emoji || '❔'} {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
-                          {monsterQuantity > 1 && <span className="text-[var(--accent)]"> ×{monsterQuantity}</span>}
-                        </button>
-                        <button
-                          onClick={() => setEditingMonstreId((id) => (id === m.id ? null : m.id))}
-                          title="Personnaliser l'emoji/l'image par défaut de ce monstre"
-                          className={`px-1.5 text-xs rounded-r border border-l-0 border-[var(--border)] hover:border-[var(--accent)] ${
-                            editingMonstreId === m.id ? 'bg-[var(--bg-input)]' : ''
-                          }`}
-                        >
-                          ✏️
-                        </button>
-                      </div>
-                      {editingMonstreId === m.id && (
-                        <div className="flex items-center gap-1.5 px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]">
-                          <input
-                            key={m.id}
-                            type="text"
-                            maxLength={4}
-                            defaultValue={m.emoji || ''}
-                            onBlur={(e) => handleMonstreEmojiBlur(m, e)}
-                            title="Emoji par défaut"
-                            className="w-10 px-1 py-0.5 text-sm text-center rounded bg-[var(--bg-card)] border border-[var(--border)]"
-                          />
-                          <label className="px-2 py-0.5 text-[10px] rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)] whitespace-nowrap">
-                            {m.image_url ? '🖼️ Changer' : '🖼️ Image'}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => e.target.files?.[0] && handleMonstreImageUpload(m, e.target.files[0])}
-                            />
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+          📚 Bibliothèques<Kbd>B</Kbd>
+        </button>
+      </div>
 
       {withCamera && (
         <InitiativeTracker
@@ -961,68 +607,399 @@ export default function BoardEditor({
           isGm
           onNext={onInitiativeNext}
           onReset={onInitiativeReset}
-          selectedTokenId={selectedTokenId}
-          onSelectToken={(token) => { setCameraSelected(false); setSelectedZone(null); setSelectedTokenId(token.id); }}
+          selectedTokenId={selectedToken?.id ?? null}
+          onSelectToken={(token) => selectToken(token)}
         />
       )}
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <BoardCanvas
-          board={board}
-          isGm
-          className="relative flex-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
-          style={{ aspectRatio: '16 / 9' }}
-          hudPlayers={hudPlayers}
-          hudEnemies={hudEnemies}
-          selectedToken={selectedToken}
-          onSelectToken={(token) => { setCameraSelected(false); setSelectedZone(null); setSelectedTokenId(token.id); }}
-          onTokenDragEnd={onMoveToken}
-          selectedZone={selectedZone}
-          onSelectZone={(zone) => { setCameraSelected(false); setSelectedTokenId(null); setSelectedZone(zone); }}
-          onZoneDragEnd={onMoveZone}
-          showCameraFrame={withCamera}
-          cameraSelected={cameraSelected}
-          onSelectCamera={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(true); }}
-          onCameraDragEnd={onCameraDragEnd}
-          onCameraResizeEnd={onCameraResizeEnd}
-          onBackgroundClick={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(false); }}
-          pingMode={pingArmed}
-          onPing={(x, y) => { onPing(x, y); setPingArmed(false); }}
-          pings={pings}
-          fogMode={fogPaintArmed}
-          fogBrushMode={fogBrushMode}
-          fogBrushRadius={fogBrushRadius}
-          onFogPaint={handleFogPaint}
-          drawMode={drawArmed}
-          drawColor={drawColor}
-          onDraw={onDraw}
-        />
+      <div className="flex-1 min-h-0 flex gap-2">
+        {/* Game tools, always in the same place: what's armed is highlighted, Esc or V disarms. */}
+        <div className="w-16 shrink-0 flex flex-col gap-1 p-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] overflow-y-auto">
+          <RailButton icon="🖱️" label="Sélection" kbd="V" isActive={noToolArmed} onClick={disarmAll}
+            title="Sélectionner et déplacer · Maj+clic ou rectangle pour plusieurs pions · clic droit sur un pion pour ses actions" />
+          {withCamera && <RailButton icon="📍" label="Pointeur" kbd="P" isActive={pingArmed} onClick={armPing} title="Le prochain clic montre un repère à tout le monde" />}
+          {withCamera && (
+            <RailButton icon="🖌️" label="Brouillard" isActive={fogPaintArmed}
+              onClick={() => { if (!board.fog_enabled) onUpdateFog({ fog_enabled: true }); armFogPaint(); }}
+              title="Peindre le brouillard (révéler / masquer)" />
+          )}
+          {withCamera && <RailButton icon="✏️" label="Dessin" kbd="D" isActive={drawArmed} onClick={armDraw} title="Dessiner à main levée, visible de tous" />}
+          <RailButton icon="⭕" label="Zones" isActive={popover === 'zones'} onClick={() => setPopover((p) => (p === 'zones' ? null : 'zones'))} title="Ajouter une zone d'effet" />
+          {withCamera && (
+            <RailButton icon="🎥" label="Caméra" isActive={cameraSelected}
+              onClick={() => { setSelectedIds([]); setSelectedZone(null); setCameraSelected(true); }}
+              title="Régler ce que montre le projecteur" />
+          )}
+          <div className="my-1 border-t border-[var(--border)]" />
+          <RailButton icon="#️⃣" label="Grille" kbd="G" isActive={board.grid_visible} onClick={onToggleGrid} title="Afficher / masquer la grille" />
+          <RailButton icon="🏷️" label="Noms" kbd="L" isActive={board.labels_visible !== false} onClick={onToggleLabels}
+            title="Afficher / masquer le nom sous chaque pion (utile quand ils se chevauchent)" />
+          <RailButton icon="⚙️" label="Réglages" isActive={popover === 'settings'} onClick={() => setPopover((p) => (p === 'settings' ? null : 'settings'))}
+            title="Taille des cases et des pions" />
+          {withCamera && (
+            <>
+              <div className="flex-1" />
+              <RailButton icon="🆕" label="Scène" danger title="Nouvelle scène : vide pions, zones, brouillard, dessins et document (garde le fond et la musique)"
+                onClick={() => {
+                  if (window.confirm('Vider le plateau (pions, zones, brouillard, dessins, document affiché) ? Le fond, la musique et la caméra sont conservés.')) {
+                    clearSelection();
+                    onNewScene();
+                  }
+                }} />
+            </>
+          )}
+        </div>
+
+        <div ref={boardAreaRef} className="relative flex-1 min-w-0">
+          <BoardCanvas
+            board={board}
+            isGm
+            className="absolute inset-0 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]"
+            hudPlayers={hudPlayers}
+            hudEnemies={hudEnemies}
+            selectedToken={selectedToken}
+            selectedTokenIds={selectedIds}
+            onSelectToken={selectToken}
+            onTokenDragEnd={handleTokenMoved}
+            onTokenContextMenu={handleTokenContextMenu}
+            onMarqueeSelect={handleMarqueeSelect}
+            onDropItem={handleDropItem}
+            selectedZone={selectedZone}
+            onSelectZone={(zone) => { setCameraSelected(false); setSelectedIds([]); setSelectedZone(zone); }}
+            onZoneDragEnd={onMoveZone}
+            showCameraFrame={withCamera}
+            cameraSelected={cameraSelected}
+            onSelectCamera={() => { setSelectedIds([]); setSelectedZone(null); setCameraSelected(true); }}
+            onCameraDragEnd={onCameraDragEnd}
+            onCameraResizeEnd={onCameraResizeEnd}
+            onBackgroundClick={(e) => { if (!e?.shiftKey) clearSelection(); setPopover(null); }}
+            pingMode={pingArmed}
+            onPing={(x, y) => { onPing(x, y); setPingArmed(false); }}
+            pings={pings}
+            fogMode={fogPaintArmed}
+            fogBrushMode={fogBrushMode}
+            fogBrushRadius={fogBrushRadius}
+            onFogPaint={handleFogPaint}
+            drawMode={drawArmed}
+            drawColor={drawColor}
+            onDraw={onDraw}
+          />
+
+          {/* Options of the armed tool, floating over the board's top edge. */}
+          {(fogPaintArmed || drawArmed || pingArmed) && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-2 py-1 text-sm whitespace-nowrap rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] shadow-lg">
+              {pingArmed && <span className="px-1">📍 Clique sur le plateau pour montrer un repère</span>}
+              {fogPaintArmed && (
+                <>
+                  {[['reveal', 'Révéler'], ['hide', 'Masquer']].map(([mode, label]) => (
+                    <button key={mode} onClick={() => setFogBrushMode(mode)}
+                      className={`px-2 py-1 rounded ${fogBrushMode === mode ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                  <span className="pl-2 text-[var(--text-secondary)]">Taille {fogBrushRadius}</span>
+                  <button onClick={() => setFogBrushRadius((r) => Math.max(1, r - 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">−</button>
+                  <button onClick={() => setFogBrushRadius((r) => Math.min(6, r + 1))} className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">+</button>
+                  <span className="mx-1 h-5 border-l border-[var(--border)]" />
+                  <button onClick={() => onUpdateFog({ fog_revealed: [] })} className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">Tout masquer</button>
+                  <button onClick={() => onUpdateFog({ fog_revealed: Array.from({ length: FOG_COLS * FOG_ROWS }, (_, i) => i) })}
+                    className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">Tout révéler</button>
+                  <button onClick={() => { setFogPaintArmed(false); onUpdateFog({ fog_enabled: false }); }}
+                    className="px-2 py-1 rounded hover:bg-[var(--bg-input)] text-[var(--text-secondary)]">Couper le brouillard</button>
+                </>
+              )}
+              {drawArmed && (
+                <>
+                  <input type="color" value={drawColor} onChange={(e) => setDrawColor(e.target.value)} className="w-7 h-7 rounded border border-[var(--border)]" />
+                  {board.drawings?.length > 0 && (
+                    <>
+                      <button onClick={onUndoDrawing} title="Annuler le dernier trait" className="px-2 py-1 rounded hover:bg-[var(--bg-input)]">↩︎ Annuler</button>
+                      <button onClick={onClearDrawings} title="Tout effacer" className="px-2 py-1 rounded hover:bg-[var(--bg-input)]">🗑️ Tout effacer</button>
+                    </>
+                  )}
+                </>
+              )}
+              <button onClick={disarmAll} title="Terminer (Échap)" className="ml-1 px-2 py-1 rounded hover:bg-[var(--bg-input)]">✕</button>
+            </div>
+          )}
+
+          {popover === 'zones' && (
+            <div className="absolute top-2 left-2 z-50 flex flex-col gap-1 p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg">
+              <span className="text-xs text-[var(--text-secondary)]">Ajouter une zone au centre</span>
+              {ZONE_SHAPES.map(([shape, label]) => (
+                <button key={shape} onClick={() => handleAddZone(shape)} className={`${btn} text-left`}>{label}</button>
+              ))}
+            </div>
+          )}
+
+          {popover === 'settings' && (
+            <div className="absolute top-2 left-2 z-50 flex flex-col gap-2 p-3 w-64 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span>Cases de la grille</span>
+                <span className="w-6 text-right">{liveGridSize ?? board.grid_size ?? 20}</span>
+              </div>
+              <input
+                type="range" min="6" max="60"
+                value={liveGridSize ?? board.grid_size ?? 20}
+                onChange={(e) => setLiveGridSize(Number(e.target.value))}
+                onMouseUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+                onTouchEnd={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+                onKeyUp={(e) => { onGridSizeChange(Number(e.target.value)); setLiveGridSize(null); }}
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span>Taille des pions</span>
+                <div className="flex gap-1">
+                  <button onClick={() => onTokenSize(-8)} className={smallBtn}>−</button>
+                  <button onClick={() => onTokenSize(8)} className={smallBtn}>+</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Libraries slide over the board's right side instead of pushing the board down; while
+              something is being dragged out of them they fade away so the whole board is a target. */}
+          {libraryTab && (
+            <div ref={drawerRef} className={`absolute top-0 right-0 bottom-0 z-40 w-[26rem] max-w-[85%] flex flex-col rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl transition-opacity ${
+              draggingFromLibrary ? 'opacity-20 pointer-events-none' : ''
+            }`}>
+              <div className="flex items-center gap-1 p-2 border-b border-[var(--border)] overflow-x-auto">
+                {LIBRARY_TABS.filter(([, , liveOnly]) => withCamera || !liveOnly).map(([tab, label]) => (
+                  <button key={tab} onClick={() => openLibrary(tab)}
+                    className={`px-2 py-1 text-xs rounded whitespace-nowrap ${libraryTab === tab ? 'bg-[var(--accent)] text-white' : 'hover:bg-[var(--bg-input)]'}`}>
+                    {label}
+                  </button>
+                ))}
+                <button onClick={() => setLibraryTab(null)} title="Fermer (B)" className="ml-auto px-2 py-1 rounded hover:bg-[var(--bg-input)]">✕</button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-3">
+                {libraryTab === 'ennemis' && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input type="text" placeholder="Rechercher (gobelin, ours…)" value={monsterSearch} autoFocus
+                        onChange={(e) => setMonsterSearch(e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
+                      <label className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+                        ×
+                        <input type="number" min="1" max="20" value={monsterQuantity}
+                          onChange={(e) => setMonsterQuantity(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                          className="w-12 px-1.5 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
+                      </label>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Fais glisser un ennemi sur le plateau (ou clique pour l'ajouter au centre). Ils arrivent cachés et sélectionnés :
+                      <b> H</b> pour les montrer.
+                    </p>
+                    {Object.entries(MONSTRE_CATEGORY_LABELS).map(([cat, label]) => {
+                      const inCategory = monstres.filter((m) => m.category === cat
+                        && m.name.toLowerCase().includes(monsterSearch.trim().toLowerCase()));
+                      if (inCategory.length === 0) return null;
+                      return (
+                        <div key={cat}>
+                          <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">{label}</h4>
+                          <div className="flex flex-wrap gap-1">
+                            {inCategory.map((m) => (
+                              <div key={m.id} className="flex flex-col gap-1">
+                                <div className="flex items-stretch">
+                                  <button
+                                    {...dragProps({ kind: 'monstre', id: m.id })}
+                                    onClick={() => handleAddMonstre(m)}
+                                    title={`NC ${m.nc} · Déf ${m.defense} · PV ${m.pv} · Init ${m.initiative}`}
+                                    className="px-2 py-1 text-xs rounded-l border border-[var(--border)] hover:border-[var(--accent)] cursor-grab"
+                                  >
+                                    {m.emoji || '❔'} {m.name} <span className="text-[var(--text-secondary)]">NC{m.nc}</span>
+                                    {monsterQuantity > 1 && <span className="text-[var(--accent)]"> ×{monsterQuantity}</span>}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingMonstreId((id) => (id === m.id ? null : m.id))}
+                                    title="Personnaliser l'emoji/l'image par défaut de ce monstre"
+                                    className={`px-1.5 text-xs rounded-r border border-l-0 border-[var(--border)] hover:border-[var(--accent)] ${editingMonstreId === m.id ? 'bg-[var(--bg-input)]' : ''}`}
+                                  >
+                                    ✏️
+                                  </button>
+                                </div>
+                                {editingMonstreId === m.id && (
+                                  <div className="flex items-center gap-1.5 px-1.5 py-1 rounded border border-[var(--border)] bg-[var(--bg-input)]">
+                                    <input key={m.id} type="text" maxLength={4} defaultValue={m.emoji || ''} onBlur={(e) => handleMonstreEmojiBlur(m, e)}
+                                      title="Emoji par défaut"
+                                      className="w-10 px-1 py-0.5 text-sm text-center rounded bg-[var(--bg-card)] border border-[var(--border)]" />
+                                    <label className="px-2 py-0.5 text-[10px] rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)] whitespace-nowrap">
+                                      {m.image_url ? '🖼️ Changer' : '🖼️ Image'}
+                                      <input type="file" accept="image/*" className="hidden"
+                                        onChange={(e) => e.target.files?.[0] && handleMonstreImageUpload(m, e.target.files[0])} />
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {libraryTab === 'personnages' && (
+                  <>
+                    <div>
+                      <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">Personnages pas encore sur le plateau</h4>
+                      {tokenlessCharacters.length === 0 ? (
+                        <p className="text-xs text-[var(--text-secondary)]">Tous les personnages sont déjà sur le plateau.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {tokenlessCharacters.map((c) => (
+                            <button key={c.id} {...dragProps({ kind: 'character', id: c.id })} onClick={() => onAddCharacterToken(c)}
+                              className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)] cursor-grab">
+                              {c.avatar_emoji || '🧙'} {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {golemCharacters.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-1">Golems</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {golemCharacters.map((c) => (
+                            <button key={c.id} onClick={() => handleAddGolem(c)}
+                              title={`Pré-remplit le formulaire ci-dessous avec "Golem de ${c.name}" et ${c.level * 5} PV (niveau × 5)`}
+                              className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">
+                              🗿 Golem ({c.name})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <form onSubmit={handleAddToken} className="flex flex-col gap-1.5">
+                      <h4 className="text-xs font-semibold text-[var(--text-secondary)]">Pion libre</h4>
+                      <input type="text" placeholder="Nom du pion" value={newTokenLabel}
+                        onChange={(e) => { setNewTokenLabel(e.target.value); setNewTokenOwnerId(null); }}
+                        className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
+                      <div className="flex gap-1.5">
+                        <input type="number" min="1" placeholder="PV (optionnel)" value={newTokenHp}
+                          title="Pour un pion-créature (golem, familier...) avec sa propre barre de vie"
+                          onChange={(e) => setNewTokenHp(e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
+                        <button type="submit" className={btn}>Ajouter</button>
+                      </div>
+                    </form>
+                  </>
+                )}
+
+                {libraryTab === 'fonds' && (
+                  <>
+                    <label className="self-start px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
+                      {uploadingBg ? 'Envoi...' : 'Envoyer un fond (image ou vidéo)'}
+                      <input type="file" accept="image/*,video/mp4" onChange={withUpload(setUploadingBg, onUploadBackground)} className="hidden" disabled={uploadingBg} />
+                    </label>
+                    {backgroundMedia.length === 0 ? (
+                      <p className="text-sm text-[var(--text-secondary)]">Aucun fond envoyé pour l'instant.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {backgroundMedia.map((media) => (
+                          <div key={media.id} className="flex flex-col gap-1">
+                            <button onClick={() => onPickBackground(media)} title="Utiliser ce fond"
+                              className="h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 flex items-center justify-center">
+                              {media.type === 'video'
+                                ? <video src={media.url} className="w-full h-full object-cover" muted />
+                                : <img src={media.url} alt={media.label} className="w-full h-full object-cover" />}
+                            </button>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>
+                                {media.type === 'video' ? '🎬 ' : '🖼 '}{media.label}
+                              </span>
+                              <button onClick={() => onDeleteMedia(media)} className="text-[10px] text-red-500 hover:underline shrink-0">suppr.</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {withCamera && libraryTab === 'documents' && (
+                  <>
+                    <label className="self-start px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
+                      {uploadingHandout ? 'Envoi...' : 'Envoyer un document'}
+                      <input type="file" accept="image/*" onChange={withUpload(setUploadingHandout, onUploadHandoutMedia)} className="hidden" disabled={uploadingHandout} />
+                    </label>
+                    {handoutMedia.length === 0 ? (
+                      <p className="text-sm text-[var(--text-secondary)]">Aucun document envoyé pour l'instant.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {handoutMedia.map((media) => (
+                          <div key={media.id} className="flex flex-col gap-1">
+                            <button onClick={() => setPreviewHandout(media)} title="Aperçu avant de le montrer aux joueurs"
+                              className="relative h-20 rounded border border-[var(--border)] hover:border-[var(--accent)] overflow-hidden bg-black/20 group">
+                              <img src={media.url} alt={media.label} className="w-full h-full object-cover" />
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition-colors">
+                                <span className="opacity-0 group-hover:opacity-100 text-lg">👁️</span>
+                              </span>
+                            </button>
+                            <span className="text-[10px] truncate text-[var(--text-secondary)]" title={media.label}>📄 {media.label}</span>
+                            <div className="flex gap-1">
+                              <button onClick={() => onShowHandout(media.url)}
+                                className="flex-1 text-[10px] px-1 py-0.5 rounded border border-[var(--border)] hover:border-[var(--accent)]">📢 Montrer</button>
+                              <button onClick={() => onDeleteMedia(media)} className="text-[10px] text-red-500 hover:underline">suppr.</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {withCamera && libraryTab === 'musique' && (
+                  <>
+                    <label className="self-start px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white cursor-pointer hover:bg-[var(--accent-hover)]">
+                      {uploadingMusic ? 'Envoi...' : 'Envoyer une piste'}
+                      <input type="file" accept="audio/*" onChange={withUpload(setUploadingMusic, onUploadMusic)} className="hidden" disabled={uploadingMusic} />
+                    </label>
+                    {musicMedia.length === 0 ? (
+                      <p className="text-sm text-[var(--text-secondary)]">Aucune piste envoyée pour l'instant.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {musicMedia.map((media) => (
+                          <div key={media.id} className="flex flex-wrap items-center gap-2 p-2 rounded border border-[var(--border)]">
+                            <span className="text-sm truncate flex-1 min-w-[8rem]" title={media.label}>🎵 {media.label}</span>
+                            <audio src={media.url} controls className="h-8 max-w-full" />
+                            <button onClick={() => onPickMusic(media)} className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">Utiliser</button>
+                            <button onClick={() => onDeleteMedia(media)} className="text-[10px] text-red-500 hover:underline shrink-0">suppr.</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Always rendered at a fixed width (not conditionally mounted) — otherwise the board's
-            flex-1 width jumps every time a selection appears/disappears, resizing the whole
-            16:9 canvas under the GM's cursor mid-session. */}
-        <div className="w-full lg:w-64 shrink-0 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3 h-fit">
+            width jumps every time a selection appears/disappears, under the GM's cursor. */}
+        <div className="w-72 shrink-0 overflow-y-auto p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
           {withCamera && cameraSelected ? (
             <>
               <h3 className="font-semibold">🎥 Cadre projeté</h3>
               <p className="text-xs text-[var(--text-secondary)]">
                 Ce que les joueurs voient sur le mode projecteur. Fais glisser son étiquette pour le déplacer.
               </p>
-
               <div className="flex items-center justify-between text-sm">
                 <span>Zoom</span>
                 <div className="flex gap-1">
-                  <button onClick={() => onCameraZoom(10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                  <button onClick={() => onCameraZoom(-10)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                  <button onClick={() => onCameraZoom(10)} className={smallBtn}>−</button>
+                  <button onClick={() => onCameraZoom(-10)} className={smallBtn}>+</button>
                 </div>
               </div>
-
-              <button
-                onClick={onCameraReset}
-                className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-              >
-                Recentrer sur tout le plateau
-              </button>
+              <button onClick={onCameraReset} className={btn}>Recentrer sur tout le plateau</button>
+            </>
+          ) : selectedTokens.length > 1 ? (
+            <>
+              <h3 className="font-semibold">{selectedTokens.length} pions sélectionnés</h3>
+              <p className="text-xs text-[var(--text-secondary)] -mt-2">{selectedTokens.map((t) => t.label).join(', ')}</p>
+              <SelectionActions key={selectedIds.join(',')} tokens={selectedTokens} {...actionProps} />
+              <p className="text-xs text-[var(--text-secondary)]">Fais glisser l'un d'eux pour déplacer tout le groupe.</p>
             </>
           ) : selectedToken ? (
             <>
@@ -1034,169 +1011,153 @@ export default function BoardEditor({
                 <h3 className="font-semibold">{selectedToken.label}</h3>
               )}
 
+              <SelectionActions key={selectedToken.id} tokens={[selectedToken]} {...actionProps} />
+
               {selectedToken.hp_max != null && (
                 <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>PV {selectedToken.hp_current}/{selectedToken.hp_max}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => handleTokenHp(-1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                      <button onClick={() => handleTokenHp(1)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleToggleHideHp}
-                    className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                  >
+                  <button onClick={() => onToggleTokenHideHp(selectedToken)} className={btn}>
                     {selectedToken.hide_hp_from_players ? '🙈 Vie cachée aux joueurs' : '👁️ Vie visible des joueurs'}
                   </button>
-
                   {selectedToken.hide_hp_from_players && (
                     <label className="flex flex-col gap-1 text-sm">
                       <span className="text-[var(--text-secondary)]">Indicateur montré aux joueurs (optionnel)</span>
-                      <input
-                        key={selectedToken.id}
-                        type="text"
-                        maxLength={20}
-                        placeholder="ex : 🩸🩸, Blessé, ??"
-                        defaultValue={selectedToken.player_hp_label || ''}
-                        onBlur={handlePlayerHpLabelBlur}
-                        className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-                      />
+                      <input key={selectedToken.id} type="text" maxLength={20} placeholder="ex : 🩸🩸, Blessé, ??"
+                        defaultValue={selectedToken.player_hp_label || ''} onBlur={handlePlayerHpLabelBlur}
+                        className="px-2 py-1.5 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
                     </label>
                   )}
                 </>
               )}
 
               {withCamera && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm text-[var(--text-secondary)]">État</span>
-                <div className="flex flex-wrap gap-1">
-                  {STATUS_PRESETS.map(([icon, name]) => (
-                    <button
-                      key={icon}
-                      onClick={() => handleToggleStatusIcon(icon)}
-                      title={name}
-                      className={`w-8 h-8 text-base rounded border hover:border-[var(--accent)] ${
-                        selectedToken.status_icons?.includes(icon) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)]'
-                      }`}
-                    >
-                      {icon}
-                    </button>
-                  ))}
-                </div>
                 <form onSubmit={handleAddCustomStatusIcon} className="flex gap-1">
-                  <input
-                    type="text"
-                    maxLength={4}
-                    placeholder="Autre emoji"
-                    value={customStatusIcon}
+                  <input type="text" maxLength={4} placeholder="Autre état (emoji)" value={customStatusIcon}
                     onChange={(e) => setCustomStatusIcon(e.target.value)}
-                    className="w-24 px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]"
-                  />
-                  <button type="submit" className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">
-                    Ajouter
-                  </button>
+                    className="flex-1 min-w-0 px-2 py-1 text-sm rounded bg-[var(--bg-input)] border border-[var(--border)]" />
+                  <button type="submit" className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">Ajouter</button>
                 </form>
-              </div>
               )}
 
               <label className="px-3 py-1.5 text-sm text-center rounded border border-[var(--border)] cursor-pointer hover:border-[var(--accent)]">
                 Image du pion
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && onUploadTokenImage(selectedToken, e.target.files[0])}
-                />
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={(e) => e.target.files?.[0] && onUploadTokenImage(selectedToken, e.target.files[0])} />
               </label>
-
-              <button
-                onClick={() => handleToggleTokenVisible(selectedToken)}
-                className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-              >
-                {selectedToken.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
-              </button>
-
-              <button
-                onClick={() => handleDeleteToken(selectedToken)}
-                className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
-              >
-                Supprimer le pion
-              </button>
             </>
           ) : selectedZone ? (
             <>
-              <h3 className="font-semibold">
-                Zone — {ZONE_SHAPES.find(([s]) => s === selectedZone.shape)?.[1]}
-              </h3>
-
+              <h3 className="font-semibold">Zone — {ZONE_SHAPES.find(([s]) => s === selectedZone.shape)?.[1]}</h3>
               <label className="flex items-center justify-between text-sm">
                 Couleur
-                <input type="color" value={selectedZone.color} onChange={handleZoneColor} className="w-8 h-8 rounded border border-[var(--border)]" />
+                <input type="color" value={selectedZone.color} onChange={(e) => handlePatchZone({ color: e.target.value })}
+                  className="w-8 h-8 rounded border border-[var(--border)]" />
               </label>
-
               <div className="flex items-center justify-between text-sm">
                 <span>{selectedZone.shape === 'circle' ? 'Rayon' : 'Longueur'}</span>
                 <div className="flex gap-1">
-                  <button onClick={() => handleZoneSize(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                  <button onClick={() => handleZoneSize(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                  <button onClick={() => handlePatchZone({ size_delta: -2 })} className={smallBtn}>−</button>
+                  <button onClick={() => handlePatchZone({ size_delta: 2 })} className={smallBtn}>+</button>
                 </div>
               </div>
-
               {selectedZone.shape !== 'circle' && (
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span>Largeur</span>
                     <div className="flex gap-1">
-                      <button onClick={() => handleZoneWidth(-2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">−</button>
-                      <button onClick={() => handleZoneWidth(2)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">+</button>
+                      <button onClick={() => handlePatchZone({ width_delta: -2 })} className={smallBtn}>−</button>
+                      <button onClick={() => handlePatchZone({ width_delta: 2 })} className={smallBtn}>+</button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span>Rotation</span>
                     <div className="flex gap-1">
-                      <button onClick={() => handleZoneRotation(-15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↺</button>
-                      <button onClick={() => handleZoneRotation(15)} className="w-7 h-7 rounded border border-[var(--border)] hover:border-[var(--accent)]">↻</button>
+                      <button onClick={() => handlePatchZone({ rotation_delta: -15 })} className={smallBtn}>↺</button>
+                      <button onClick={() => handlePatchZone({ rotation_delta: 15 })} className={smallBtn}>↻</button>
                     </div>
                   </div>
                 </>
               )}
-
-              <button
-                onClick={handleToggleZoneVisible}
-                className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-              >
+              <button onClick={() => handlePatchZone({ visible_to_players: !selectedZone.visible_to_players })} className={btn}>
                 {selectedZone.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
               </button>
-
-              <button
-                onClick={handleDeleteZone}
-                className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10"
-              >
+              <button onClick={handleDeleteZone} className="px-3 py-1.5 text-sm rounded border border-red-400 text-red-500 hover:bg-red-500/10">
                 Supprimer la zone
               </button>
             </>
           ) : (
             <>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Sélectionne un pion, une zone{withCamera ? ' ou le cadre projeté (son étiquette)' : ''} pour le modifier.
+              <h3 className="font-semibold text-sm">Sur la scène</h3>
+              {board.tokens.length === 0 ? (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Aucun pion. Ouvre les <b>📚 Bibliothèques</b> (B) et fais glisser un ennemi ou un personnage sur le plateau.
+                </p>
+              ) : scenePawns.map(([title, tokens]) => tokens.length > 0 && (
+                <div key={title} className="flex flex-col gap-1">
+                  <span className="text-xs text-[var(--text-secondary)]">{title} ({tokens.length})</span>
+                  {tokens.map((t) => (
+                    <div key={t.id} className="flex items-center gap-1">
+                      <button onClick={(e) => selectToken(t, e)} className="flex-1 min-w-0 text-left px-2 py-1 text-sm rounded hover:bg-[var(--bg-input)] truncate">
+                        {t.label}
+                        {t.hp_max != null && <span className="text-xs text-[var(--text-secondary)]"> · {t.hp_current}/{t.hp_max}</span>}
+                      </button>
+                      {!(t.character_id && !t.is_npc) && (
+                        <button onClick={() => onToggleTokenVisible(t)} title={t.visible_to_players ? 'Cacher aux joueurs' : 'Montrer aux joueurs'}
+                          className="w-7 h-7 rounded hover:bg-[var(--bg-input)]">
+                          {t.visible_to_players ? '👁️' : '🙈'}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Clic droit sur un pion pour ses actions · Maj+clic ou rectangle pour en sélectionner plusieurs · Suppr pour supprimer · H pour montrer/cacher.
               </p>
-              {withCamera && (
-                // Fallback entry point: at camera_width=100 the frame's corner sits at (0,0)
-                // and its badge (shifted further up to sit above that corner) gets clipped
-                // outside the board's overflow-hidden bounds, with no other way to reach it.
-                <button
-                  onClick={() => { setSelectedTokenId(null); setSelectedZone(null); setCameraSelected(true); }}
-                  className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)]"
-                >
-                  🎥 Modifier le cadre projeté
-                </button>
-              )}
             </>
           )}
         </div>
       </div>
+
+      {/* Right-click menu, right next to the pawn: same actions as the side panel, for the whole
+          selection. The transparent backdrop closes it on any click elsewhere. */}
+      {menu && selectedTokens.length > 0 && (
+        <>
+          <div className="fixed inset-0 z-[90]" onPointerDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+          <div
+            className="fixed z-[100] w-64 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] shadow-2xl"
+            style={{ left: Math.min(menu.x, window.innerWidth - 272), top: Math.min(menu.y, window.innerHeight - 320) }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-sm truncate">
+                {selectedTokens.length === 1 ? selectedTokens[0].label : `${selectedTokens.length} pions`}
+              </span>
+              <button onClick={() => setMenu(null)} className="px-1 text-[var(--text-secondary)]">✕</button>
+            </div>
+            <SelectionActions key={selectedIds.join(',')} tokens={selectedTokens} {...actionProps} />
+          </div>
+        </>
+      )}
+
+      {previewHandout && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6" onClick={() => setPreviewHandout(null)}>
+          <div className="flex flex-col gap-2 max-w-3xl max-h-full" onClick={(e) => e.stopPropagation()}>
+            <img src={previewHandout.url} alt={previewHandout.label}
+              className="max-w-full max-h-[80vh] object-contain rounded-lg border-2 border-[var(--accent)] shadow-2xl" />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-white/80 truncate">{previewHandout.label}</span>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => { onShowHandout(previewHandout.url); setPreviewHandout(null); }}
+                  className="px-3 py-1.5 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
+                  📢 Montrer aux joueurs
+                </button>
+                <button onClick={() => setPreviewHandout(null)} className="px-3 py-1.5 text-sm rounded border border-white/30 text-white hover:bg-white/10">
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
