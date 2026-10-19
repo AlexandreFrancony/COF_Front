@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 // The board area's aspect ratio; background-size/shape percentages are relative to width and
 // height separately, so a horizontal % needs a taller vertical % (by this ratio) to render as
@@ -181,41 +181,35 @@ function useFogPaint(editable, brushRadius, onCommit) {
   return { containerRef, pending, handlePointerDown };
 }
 
-// Renders only the UNREVEALED cells (a revealed one has literally no element — nothing to draw),
-// so the DOM shrinks as the GM reveals more of the map instead of growing. `ghost` is the GM's
-// own view: semi-transparent, since they still need to see what they're painting over; everyone
-// else gets a fully opaque cell, hiding the scene (and any token standing on it) completely.
+// One continuous veil with the revealed cells cut out of it, its edges blurred: a revealed room
+// reads as a soft-edged clearing instead of a staircase of squares. Drawn in an SVG whose units
+// are fog cells (viewBox FOG_COLS x FOG_ROWS, stretched to the 16:9 scene, where cells are near
+// square), so the blur is ~half a cell whatever the screen size. The veil overshoots the scene on
+// every side so the blur never thins it along the board's own edges. `ghost` is the GM's own view:
+// semi-transparent, since they still need to see what they're painting over; everyone else gets
+// an opaque veil, hiding the scene (and any token standing well inside it) completely.
 // Only captures pointer events while `editable` (the GM armed the paint brush) — otherwise clicks
 // pass straight through to whatever pawn/zone is underneath, same as if this layer didn't exist.
+const FOG_EDGE_BLUR = 0.45;
+const FOG_OVERSHOOT = 3;
+
 function FogLayer({ board, isGm, editable, brushMode, brushRadius, onPaint }) {
   const revealed = useMemo(() => new Set(board.fog_revealed || []), [board.fog_revealed]);
   const { containerRef, pending, handlePointerDown } = useFogPaint(editable, brushRadius, (cells) => onPaint(cells, brushMode));
   const ghost = isGm;
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
 
-  const cells = [];
-  for (let row = 0; row < FOG_ROWS; row++) {
-    for (let col = 0; col < FOG_COLS; col++) {
-      const idx = row * FOG_COLS + col;
-      // A cell touched during the current drag previews what release will actually do (cleared
-      // for 'reveal', covered for 'hide'); everything else keeps its current persisted state —
-      // switching brush mode must never itself change how untouched cells look.
-      const isPending = pending.has(idx);
-      const covered = isPending ? brushMode === 'hide' : !revealed.has(idx);
-      if (!covered) continue;
-      cells.push(
-        <div
-          key={idx}
-          style={{
-            position: 'absolute',
-            left: `${(col / FOG_COLS) * 100}%`, top: `${(row / FOG_ROWS) * 100}%`,
-            width: `${100 / FOG_COLS}%`, height: `${100 / FOG_ROWS}%`,
-            background: ghost ? 'rgba(0,0,0,0.55)' : '#000',
-          }}
-        />
-      );
-    }
+  const holes = [];
+  for (let idx = 0; idx < FOG_ROWS * FOG_COLS; idx++) {
+    // A cell touched during the current drag previews what release will actually do (cleared
+    // for 'reveal', covered for 'hide'); everything else keeps its current persisted state —
+    // switching brush mode must never itself change how untouched cells look.
+    const covered = pending.has(idx) ? brushMode === 'hide' : !revealed.has(idx);
+    if (covered) continue;
+    holes.push(<rect key={idx} x={idx % FOG_COLS} y={Math.floor(idx / FOG_COLS)} width={1.02} height={1.02} fill="black" />);
   }
 
+  const o = FOG_OVERSHOOT;
   return (
     <div
       ref={containerRef}
@@ -224,7 +218,24 @@ function FogLayer({ board, isGm, editable, brushMode, brushRadius, onPaint }) {
       style={{ pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'crosshair' : undefined }}
       onClick={(e) => e.stopPropagation()}
     >
-      {cells}
+      <svg viewBox={`0 0 ${FOG_COLS} ${FOG_ROWS}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+        <defs>
+          <filter id={`fog-blur-${uid}`} x={-o} y={-o} width={FOG_COLS + 2 * o} height={FOG_ROWS + 2 * o} filterUnits="userSpaceOnUse">
+            <feGaussianBlur stdDeviation={FOG_EDGE_BLUR} />
+          </filter>
+          <mask id={`fog-mask-${uid}`} x={-o} y={-o} width={FOG_COLS + 2 * o} height={FOG_ROWS + 2 * o} maskUnits="userSpaceOnUse">
+            <g filter={`url(#fog-blur-${uid})`}>
+              <rect x={-o} y={-o} width={FOG_COLS + 2 * o} height={FOG_ROWS + 2 * o} fill="white" />
+              {holes}
+            </g>
+          </mask>
+        </defs>
+        <rect
+          x={-o} y={-o} width={FOG_COLS + 2 * o} height={FOG_ROWS + 2 * o}
+          fill={ghost ? 'rgba(0,0,0,0.55)' : '#050507'}
+          mask={`url(#fog-mask-${uid})`}
+        />
+      </svg>
     </div>
   );
 }
