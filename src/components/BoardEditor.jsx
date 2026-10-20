@@ -708,7 +708,7 @@ export default function BoardEditor({
 
           {/* Options of the armed tool, floating over the board's top edge. */}
           {(fogPaintArmed || drawArmed || pingArmed) && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-2 py-1 text-sm whitespace-nowrap rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] shadow-lg">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 px-2 py-1 text-sm whitespace-nowrap rounded-lg glass-blur bg-[var(--bg-card)] border border-[var(--accent)] shadow-lg">
               {pingArmed && <span className="px-1">📍 Clique sur le plateau pour montrer un repère</span>}
               {fogPaintArmed && (
                 <>
@@ -745,7 +745,7 @@ export default function BoardEditor({
           )}
 
           {popover === 'zones' && (
-            <div className="absolute top-2 left-2 z-50 flex flex-col gap-1 p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg">
+            <div className="glass-blur absolute top-2 left-2 z-50 flex flex-col gap-1 p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg">
               <span className="text-xs text-[var(--text-secondary)]">Ajouter une zone au centre</span>
               {ZONE_SHAPES.map(([shape, label]) => (
                 <button key={shape} onClick={() => handleAddZone(shape)} className={`${btn} text-left`}>{label}</button>
@@ -754,7 +754,7 @@ export default function BoardEditor({
           )}
 
           {popover === 'settings' && (
-            <div className="absolute top-2 left-2 z-50 flex flex-col gap-2 p-3 w-64 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
+            <div className="glass-blur absolute top-2 left-2 z-50 flex flex-col gap-2 p-3 w-64 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span>Cases de la grille</span>
                 <span className="w-6 text-right">{liveGridSize ?? board.grid_size ?? 20}</span>
@@ -778,7 +778,7 @@ export default function BoardEditor({
           )}
 
           {popover === 'scenes' && scenarios && (
-            <div className="absolute top-2 right-2 z-50 w-80 max-h-[80%] overflow-y-auto flex flex-col gap-2 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
+            <div className="glass-blur absolute top-2 right-2 z-50 w-80 max-h-[80%] overflow-y-auto flex flex-col gap-2 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold">🎬 Scènes préparées</span>
                 {scenesHref && <a href={scenesHref} className="text-xs text-[var(--accent)] hover:underline">Préparer…</a>}
@@ -815,7 +815,7 @@ export default function BoardEditor({
           {/* Libraries slide over the board's right side instead of pushing the board down; while
               something is being dragged out of them they fade away so the whole board is a target. */}
           {libraryTab && (
-            <div ref={drawerRef} className={`absolute top-0 right-0 bottom-0 z-40 w-[26rem] max-w-[85%] flex flex-col rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl transition-opacity ${
+            <div ref={drawerRef} className={`glass-blur absolute top-0 right-0 bottom-0 z-40 w-[26rem] max-w-[85%] flex flex-col rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl transition-opacity ${
               draggingFromLibrary ? 'opacity-20 pointer-events-none' : ''
             }`}>
               <div className="flex items-center gap-1 p-2 border-b border-[var(--border)] overflow-x-auto">
@@ -1188,7 +1188,7 @@ export default function BoardEditor({
         <>
           <div className="fixed inset-0 z-[90]" onPointerDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
           <div
-            className="fixed z-[100] w-64 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] shadow-2xl"
+            className="glass-blur fixed z-[100] w-64 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--accent)] shadow-2xl"
             style={{ left: Math.min(menu.x, window.innerWidth - 272), top: Math.min(menu.y, window.innerHeight - 320) }}
           >
             <div className="flex items-center justify-between mb-2">

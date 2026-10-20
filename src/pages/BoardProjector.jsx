@@ -114,11 +114,11 @@ export default function BoardProjector() {
           <button
             onClick={() => setPanelOpen((v) => !v)}
             title="Ma fiche (C)"
-            className={`absolute top-1/2 -translate-y-1/2 z-[70] px-1.5 py-3 rounded-l-lg bg-[var(--bg-card)] border border-r-0 border-[var(--accent)] text-sm [writing-mode:vertical-rl] transition-[right] ${panelOpen ? 'right-80' : 'right-0'}`}
+            className={`glass-blur absolute top-1/2 -translate-y-1/2 z-[70] px-1.5 py-3 rounded-l-lg bg-[var(--bg-card)] border border-r-0 border-[var(--accent)] text-sm [writing-mode:vertical-rl] transition-[right] ${panelOpen ? 'right-80' : 'right-0'}`}
           >
             🧙 Ma fiche (C)
           </button>
-          <div className={`absolute top-0 bottom-0 right-0 z-[70] w-80 p-3 overflow-y-auto bg-[var(--bg-card)] border-l border-[var(--accent)] shadow-2xl transition-transform ${panelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className={`glass-blur absolute top-0 bottom-0 right-0 z-[70] w-80 p-3 overflow-y-auto bg-[var(--bg-card)] border-l border-[var(--accent)] shadow-2xl transition-transform ${panelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
             <PlayerCharacterPanel
               board={board}
               characters={myCharacters}
