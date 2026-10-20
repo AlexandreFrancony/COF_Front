@@ -39,7 +39,7 @@ export default function InitiativeTracker({ board, isGm = false, onNext, onReset
       <span className="text-xs font-semibold text-[var(--text-secondary)] shrink-0">
         Round {board.initiative_round}
       </span>
-      <div className="flex gap-1.5 min-w-0">
+      <div className="flex gap-1.5 min-w-0 overflow-x-auto">
         {order.map((t) => {
           const active = t.id === board.initiative_current_token_id;
           const Tag = isGm ? 'button' : 'div';

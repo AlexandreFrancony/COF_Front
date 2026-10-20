@@ -570,7 +570,7 @@ export default function BoardEditor({
 
   return (
     // select-none: a rubber-band drag across the board must not highlight the page's text (inputs stay editable)
-    <div className={`flex flex-col gap-2 select-none ${withCamera ? 'h-[calc(100dvh-9rem)]' : 'h-[78vh]'} min-h-[30rem]`}>
+    <div className={`flex flex-col gap-2 select-none ${withCamera ? 'md:h-[calc(100dvh-9rem)]' : 'md:h-[78vh]'} md:min-h-[30rem]`}>
       {/* What the players currently get, at a glance and one click away from changing it. */}
       <div className="flex flex-wrap items-center gap-1.5">
         {withCamera && (
@@ -631,9 +631,9 @@ export default function BoardEditor({
         />
       )}
 
-      <div className="flex-1 min-h-0 flex gap-2">
+      <div className="flex-1 min-h-0 flex flex-wrap md:flex-nowrap gap-2">
         {/* Game tools, always in the same place: what's armed is highlighted, Esc or V disarms. */}
-        <div className="w-16 shrink-0 flex flex-col gap-1 p-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] overflow-y-auto">
+        <div className="w-16 h-[65dvh] md:h-auto shrink-0 flex flex-col gap-1 p-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] overflow-y-auto">
           <RailButton icon="🖱️" label="Sélection" kbd="V" isActive={noToolArmed} onClick={disarmAll}
             title="Sélectionner et déplacer · Maj+clic ou rectangle pour plusieurs pions · clic droit sur un pion pour ses actions" />
           {withCamera && <RailButton icon="📍" label="Pointeur" kbd="P" isActive={pingArmed} onClick={armPing} title="Le prochain clic montre un repère à tout le monde" />}
@@ -671,7 +671,7 @@ export default function BoardEditor({
           )}
         </div>
 
-        <div ref={boardAreaRef} className="relative flex-1 min-w-0">
+        <div ref={boardAreaRef} className="relative flex-1 min-w-0 h-[65dvh] md:h-auto">
           <BoardCanvas
             board={board}
             isGm
@@ -1034,7 +1034,7 @@ export default function BoardEditor({
 
         {/* Always rendered at a fixed width (not conditionally mounted) — otherwise the board's
             width jumps every time a selection appears/disappears, under the GM's cursor. */}
-        <div className="w-72 shrink-0 overflow-y-auto p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
+        <div className="w-full md:w-72 shrink-0 overflow-y-auto p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-3">
           {withCamera && cameraSelected ? (
             <>
               <h3 className="font-semibold">🎥 Cadre projeté</h3>
