@@ -427,10 +427,10 @@ export default function LevelUp() {
     <div className="p-6 max-w-6xl mx-auto flex flex-col gap-5">
       <div className="flex items-baseline justify-between">
         <div className="flex flex-col gap-1">
-          <Link to={`/characters/${id}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent-hover)]">
+          <Link to={`/characters/${id}`} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent-ink)]">
             ← Retour à la fiche de {character.name}
           </Link>
-          <h1 className="cof-display text-2xl font-bold text-[var(--accent-hover)]">Montée de niveau</h1>
+          <h1 className="cof-display text-2xl font-bold text-[var(--accent-ink)]">Montée de niveau</h1>
         </div>
         <div className="px-4 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-sm">
           Niveau <span className="cof-display font-bold">{character.level}</span>

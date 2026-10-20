@@ -777,7 +777,7 @@ export default function CharacterSheet() {
                         onClick={() => toggleVoieExpanded(v.voie_id)}
                         className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--bg-input)]"
                       >
-                        <span className="cof-display text-sm text-[var(--accent-hover)]">
+                        <span className="cof-display text-sm text-[var(--accent-ink)]">
                           {v.name} — rang {v.rang}
                           {v.rang_cap && v.rang >= v.rang_cap && (
                             <span className="ml-1 text-xs text-[var(--text-secondary)] font-normal">(figée)</span>

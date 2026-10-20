@@ -42,6 +42,7 @@
   --text-muted: #9C8B6B;
   --accent: var(--cof-gold);
   --accent-hover: var(--cof-gold-deep);
+  --accent-ink: var(--cof-gold-deep);
   --positive: #16a34a;
   --negative: #dc2626;
   --warning: #d97706;
@@ -76,6 +77,7 @@
   --text-muted: #8A7A5C;
   --accent: var(--cof-gold);
   --accent-hover: var(--cof-gold-deep);
+  --accent-ink: var(--cof-gold);
   --positive: #22c55e;
   --negative: #ef4444;
   --warning: #f59e0b;
