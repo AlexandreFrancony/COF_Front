@@ -132,6 +132,10 @@ export const deleteScenarioZone = (zoneId) =>
   request(`/scenario-zones/${zoneId}`, { method: 'DELETE' });
 export const launchScenario = (scenarioId) =>
   request(`/scenarios/${scenarioId}/launch`, { method: 'POST' });
+export const switchScenario = (scenarioId) =>
+  request(`/scenarios/${scenarioId}/switch`, { method: 'POST' });
+export const forgetScenarioMemory = (scenarioId) =>
+  request(`/scenarios/${scenarioId}/memory`, { method: 'DELETE' });
 
 // ============================================================================
 // CHARACTERS

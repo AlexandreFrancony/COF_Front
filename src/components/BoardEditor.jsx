@@ -187,7 +187,7 @@ export default function BoardEditor({
   onPing, pings = [],
   onUpdateFog, onShowHandout, onHideHandout, onUploadHandoutMedia,
   onDraw, onUndoDrawing, onClearDrawings,
-  onNewScene, scenarios = null, onLaunchScenario, scenesHref,
+  onNewScene, scenarios = null, onLaunchScenario, onSwitchScenario, onForgetScenario, scenesHref,
   hudPlayers = null, hudEnemies = null,
 }) {
   // Ids only (not token objects) — re-derived from the live `board` prop below so the panels keep
@@ -535,12 +535,22 @@ export default function BoardEditor({
   const hiddenTokens = board.tokens.filter((t) => !t.visible_to_players && !(t.character_id && !t.is_npc));
   const selectOnly = (tokens) => { setSelectedZone(null); setCameraSelected(false); setSelectedIds(tokens.map((t) => t.id)); };
 
-  const launchScene = async (scenario, replace) => {
-    if (replace && !window.confirm(`Vider le plateau (pions, zones, brouillard, dessins, document) puis lancer « ${scenario.name} » ?`)) return;
+  // The PJ and their creatures follow the group from scene to scene; everything else belongs to the scene.
+  const isParty = (t) => Boolean(t.owner_character_id || (t.character_id && !t.is_npc));
+
+  const launchScene = async (scenario) => {
     setPopover(null);
     clearSelection();
-    if (replace) await onNewScene();
     await onLaunchScenario(scenario);
+  };
+
+  const goToScene = async (scenario) => {
+    // Only a board tied to no prepared scene has nowhere to be remembered.
+    const unsaved = !board.active_scenario_id && (board.tokens.some((t) => !isParty(t)) || board.zones.length > 0);
+    if (unsaved && !window.confirm(`Le plateau actuel n'est rattaché à aucune scène : ses pions (hors PJ et leurs créatures), zones, brouillard et dessins seront effacés. Aller à « ${scenario.name} » ?`)) return;
+    setPopover(null);
+    clearSelection();
+    await onSwitchScenario(scenario);
   };
 
   const actionProps = {
@@ -660,9 +670,9 @@ export default function BoardEditor({
           {withCamera && (
             <>
               <div className="flex-1" />
-              <RailButton icon="🆕" label="Scène" danger title="Nouvelle scène : vide pions, zones, brouillard, dessins et document (garde le fond et la musique)"
+              <RailButton icon="🆕" label="Scène" danger title="Nouvelle scène vide : les PJ et leurs créatures restent, le reste part (gardé en mémoire si une scène préparée est en cours)"
                 onClick={() => {
-                  if (window.confirm('Vider le plateau (pions, zones, brouillard, dessins, document affiché) ? Le fond, la musique et la caméra sont conservés.')) {
+                  if (window.confirm(`Nouvelle scène vide ? Les PJ et leurs créatures restent ; pions, zones, brouillard, dessins et document partent${board.active_scenario_id ? ' (gardés en mémoire avec la scène en cours)' : ''}. Le fond, la musique et la caméra sont conservés.`)) {
                     clearSelection();
                     onNewScene();
                   }
@@ -788,12 +798,25 @@ export default function BoardEditor({
                   Aucune scène préparée. Crée-les depuis la page de la campagne (Scénarios) : fond, pions et zones, prêts à lancer d'un clic.
                 </p>
               ) : scenarios.map((sc) => (
-                <div key={sc.id} className="flex items-center gap-1.5 p-2 rounded border border-[var(--border)]">
-                  <span className="flex-1 min-w-0 truncate" title={sc.name}>{sc.name}</span>
-                  <button onClick={() => launchScene(sc, false)} title="Ajoute le fond, les pions et les zones de la scène au plateau actuel"
-                    className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">➕ Ajouter</button>
-                  <button onClick={() => launchScene(sc, true)} title="Vide le plateau puis lance la scène"
-                    className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">🔄 Remplacer</button>
+                <div key={sc.id} className={`flex flex-col gap-1.5 p-2 rounded border ${board.active_scenario_id === sc.id ? 'border-[var(--accent)]' : 'border-[var(--border)]'}`}>
+                  <span className="flex flex-col">
+                    <span>{sc.name}</span>
+                    {board.active_scenario_id === sc.id ? <span className="text-[10px] text-[var(--accent-ink)]">● En cours</span>
+                      : sc.remembered && <span className="text-[10px] text-[var(--text-secondary)]">💾 Reprend où vous l'avez laissée</span>}
+                  </span>
+                  <div className="flex justify-end gap-1.5">
+                    {sc.remembered && board.active_scenario_id !== sc.id && (
+                      <button onClick={() => window.confirm(`Oublier l'état de « ${sc.name} » ? La prochaine visite repartira de sa préparation.`) && onForgetScenario(sc)}
+                        title="Oublier l'état laissé : la prochaine visite repartira de la préparation"
+                        className="px-1.5 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">↺</button>
+                    )}
+                    <button onClick={() => launchScene(sc)} title="Ajoute le fond, les pions et les zones préparés au plateau actuel, sans rien retirer"
+                      className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">➕ Ajouter</button>
+                    {board.active_scenario_id !== sc.id && (
+                      <button onClick={() => goToScene(sc)} title="Le groupe change de lieu : la scène actuelle est gardée en mémoire, les PJ et leurs créatures suivent"
+                        className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">🚪 Y aller</button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

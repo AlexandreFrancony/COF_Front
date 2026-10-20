@@ -18,7 +18,7 @@ import {
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
   updateBoardFog, updateBoardHandout, addBoardDrawing, undoLastBoardDrawing, clearBoardDrawings,
   newBoardScene,
-  getCampaignScenarios, launchScenario, updateOwnBoardToken,
+  getCampaignScenarios, launchScenario, switchScenario, forgetScenarioMemory, updateOwnBoardToken,
 } from '../utils/api';
 
 export default function Board() {
@@ -58,8 +58,10 @@ export default function Board() {
   useEffect(() => {
     if (!isGm) return;
     getBoardMedia().then(setMediaLibrary).catch(() => {});
-    getCampaignScenarios(campaignId).then(setScenarios).catch(() => {});
+    refreshScenarios();
   }, [isGm, campaignId]);
+
+  const refreshScenarios = () => getCampaignScenarios(campaignId).then(setScenarios).catch(() => {});
 
   // A prepared scene (Campagne > Scénarios) launched straight from the board: the backend adds
   // its background, pawns and zones and broadcasts the new board to every screen.
@@ -68,6 +70,29 @@ export default function Board() {
       const { tokens_added, zones_added } = await launchScenario(scenario.id);
       setBoard(await getBoard(campaignId));
       toast.success(`« ${scenario.name} » lancée : ${tokens_added} pion(s), ${zones_added} zone(s)`);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  // The group goes to another scene: the one being left is remembered, this one comes back as it
+  // was left (or from its prep on a first visit), and the PJ keep their own spot in each scene.
+  const handleSwitchScenario = async (scenario) => {
+    try {
+      const { restored } = await switchScenario(scenario.id);
+      setBoard(await getBoard(campaignId));
+      refreshScenarios();
+      toast.success(restored ? `Retour à « ${scenario.name} », comme vous l'aviez laissée` : `« ${scenario.name} » : première visite`);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleForgetScenario = async (scenario) => {
+    try {
+      await forgetScenarioMemory(scenario.id);
+      refreshScenarios();
+      toast.success(`« ${scenario.name} » repartira de sa préparation`);
     } catch (error) {
       toast.error(error.message);
     }
@@ -210,6 +235,7 @@ export default function Board() {
     try {
       setBoard(await newBoardScene(campaignId));
       setSelectedTokenId(null);
+      refreshScenarios();
     } catch (error) {
       toast.error(error.message);
     }
@@ -509,6 +535,8 @@ export default function Board() {
           onNewScene={handleNewScene}
           scenarios={scenarios}
           onLaunchScenario={handleLaunchScenario}
+          onSwitchScenario={handleSwitchScenario}
+          onForgetScenario={handleForgetScenario}
           scenesHref={`/campaigns/${campaignId}`}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
