@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import {
   getCharacter, getProfils, getVoies, raiseCharacterVoieRang, addCharacterVoie, orphanExchange,
 } from '../utils/api';
-import { NIVEAU_REQUIS_PAR_RANG } from '../utils/rules';
+import { niveauRequisFor, prestigeStartRang } from '../utils/rules';
 import { evolvingDieForLevel } from '../utils/evolvingDice';
 import { computePvBodyGain, computePmMax, costForRang, pvMaxConTerm, flatBonusFor } from '../utils/characterPreview';
 
@@ -13,6 +13,7 @@ const CATEGORY_META = {
   hybride: { color: '#5FB0D9', fallbackIcon: '🔀' },
   homebrew: { color: '#79C26A', fallbackIcon: '✨' },
   orphelin: { color: '#B9AE96', fallbackIcon: '🍀' },
+  prestige: { color: '#A97BD6', fallbackIcon: '👑' },
 };
 
 const ORPHAN_CHOICES = [
@@ -102,6 +103,8 @@ export default function LevelUp() {
   const [allProfilVoies, setAllProfilVoies] = useState([]);
   const [peupleVoies, setPeupleVoies] = useState([]);
   const [mageVoies, setMageVoies] = useState([]);
+  const [prestigeVoies, setPrestigeVoies] = useState([]);
+  const [showPrestige, setShowPrestige] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [initialStats, setInitialStats] = useState(null);
@@ -127,6 +130,7 @@ export default function LevelUp() {
     getVoies({ type: 'profil' }).then(setAllProfilVoies).catch(() => {});
     getVoies({ type: 'peuple' }).then(setPeupleVoies).catch(() => {});
     getVoies({ type: 'mage' }).then(setMageVoies).catch(() => {});
+    getVoies({ type: 'prestige' }).then(setPrestigeVoies).catch(() => {});
   }, [id]);
 
   if (loading) {
@@ -138,7 +142,17 @@ export default function LevelUp() {
   }
   if (!character) return null;
 
-  const voieCatalog = [...allProfilVoies, ...customVoies, ...peupleVoies, ...mageVoies];
+  const voieCatalog = [...allProfilVoies, ...customVoies, ...peupleVoies, ...mageVoies, ...prestigeVoies];
+  const catalogVoie = (voieId) => voieCatalog.find((v) => v.id === voieId);
+  const realRangOf = (voieId) => (character.voies || []).find((v) => v.voie_id === voieId)?.rang || 0;
+  // The rang a voie sits at before its first pick: 0 for most, one below its opening rang for a
+  // prestige voie (which starts straight at rang 4, or 3 for the familier fantastique).
+  const baseRangOf = (voieId) => {
+    const real = realRangOf(voieId);
+    if (real > 0) return real;
+    const voie = catalogVoie(voieId);
+    return voie?.type === 'prestige' ? prestigeStartRang(voie) - 1 : 0;
+  };
   const resumeFor = (voieId, rang) =>
     voieCatalog.find((v) => v.id === voieId)?.capacites?.find((c) => c.rang === rang)?.resume || '';
   const profilVoies = allProfilVoies.filter((v) => v.profil_id === character.profil_id);
@@ -146,16 +160,15 @@ export default function LevelUp() {
   const realOwnedVoieIds = new Set((character.voies || []).map((v) => v.voie_id));
   const draftVoieEntries = draft.filter((e) => e.kind === 'voie');
   const effectiveRang = (voieId) => {
-    const draftEntry = draftVoieEntries.find((e) => e.voieId === voieId);
-    const real = (character.voies || []).find((v) => v.voie_id === voieId)?.rang || 0;
-    return real + (draftEntry?.count || 0);
+    const count = draftVoieEntries.find((e) => e.voieId === voieId)?.count || 0;
+    return count > 0 ? baseRangOf(voieId) + count : realRangOf(voieId);
   };
   const draftCountFor = (voieId) => draftVoieEntries.find((e) => e.voieId === voieId)?.count || 0;
   const draftCountForOrphan = (choice) => draft.find((e) => e.kind === 'orphan' && e.choice === choice)?.count || 0;
 
   const draftPointsSpent = draft.reduce((sum, e) => {
     if (e.kind === 'orphan') return sum + e.count;
-    const startingRang = (character.voies || []).find((v) => v.voie_id === e.voieId)?.rang || 0;
+    const startingRang = baseRangOf(e.voieId);
     let cost = 0;
     for (let i = 1; i <= e.count; i++) cost += costForRang(startingRang + i);
     return sum + cost;
@@ -171,7 +184,7 @@ export default function LevelUp() {
   // card's own CONTENT still reflects the draft (via effectiveRang below), just never its
   // position.
   const realRaisableVoies = (character.voies || [])
-    .filter((v) => !(v.rang_cap && v.rang >= v.rang_cap) && !v.nested_under_capacite_id && v.type !== 'prestige');
+    .filter((v) => !(v.rang_cap && v.rang >= v.rang_cap) && !v.nested_under_capacite_id);
   const unownedProfilVoies = profilVoies.filter((v) => !realOwnedVoieIds.has(v.id) && (!hasPlan || plannedVoieIds.has(v.id)));
   const unownedCustomVoies = customVoies.filter(
     (v) => !realOwnedVoieIds.has(v.id) && (v.origine_pj_character_id == null || v.origine_pj_character_id === character.id)
@@ -198,8 +211,9 @@ export default function LevelUp() {
   // as if it slid out from behind the card that was just taken. This also means a voie simply
   // stops producing new cards once its last real rang is picked, instead of the previous design
   // where the one mutating card vanished the moment there was nothing further to unlock.
-  const buildVoieCardChain = (voieId, info, category, newSubtitle) => {
-    const baseRang = (character.voies || []).find((v) => v.voie_id === voieId)?.rang || 0;
+  const buildVoieCardChain = (voieId, info, category, newSubtitle, lockedReasonOverride = null) => {
+    const baseRang = baseRangOf(voieId);
+    const owned = realRangOf(voieId) > 0;
     const pickedCount = draftCountFor(voieId);
     const chain = [];
     for (let step = 0; step <= pickedCount; step += 1) {
@@ -211,15 +225,16 @@ export default function LevelUp() {
       // step costs 2, so having exactly 1 point left isn't enough) — the voie's very first offer
       // (step 0) always shows regardless, same as every other never-picked card.
       if (!isPicked && step > 0 && effectivePoints < stepCost) break;
-      const capaciteExists = voieCatalog.find((v) => v.id === voieId)?.capacites?.some((c) => c.rang === stepTargetRang);
+      const capaciteExists = catalogVoie(voieId)?.capacites?.some((c) => c.rang === stepTargetRang);
       if (!capaciteExists) break; // maxed out — no further card, picked or not
-      const niveauRequis = NIVEAU_REQUIS_PAR_RANG[stepTargetRang];
+      const niveauRequis = niveauRequisFor(catalogVoie(voieId) || info, stepTargetRang);
       const tooLow = niveauRequis != null && character.level < niveauRequis;
+      const lockedReason = !isPicked && lockedReasonOverride ? lockedReasonOverride
+        : tooLow ? `Niveau ${niveauRequis} requis` : null;
       chain.push({
         key: `voie-${voieId}-r${stepTargetRang}`, kind: 'voie', voieId, name: info.name, icon: info.icon,
-        subtitle: stepCurrentRang > 0 ? `Rang ${stepCurrentRang} → ${stepTargetRang}` : newSubtitle,
-        category, rang: stepTargetRang, cost: stepCost, locked: tooLow,
-        lockedReason: tooLow ? `Niveau ${niveauRequis} requis` : null,
+        subtitle: owned || step > 0 ? `Rang ${stepCurrentRang} → ${stepTargetRang}` : newSubtitle,
+        category, rang: stepTargetRang, cost: stepCost, locked: Boolean(lockedReason), lockedReason,
         description: resumeFor(voieId, stepTargetRang),
         profilId: voieCatalog.find((v) => v.id === voieId)?.profil_id ?? null,
         picked: isPicked,
@@ -231,6 +246,7 @@ export default function LevelUp() {
 
   realRaisableVoies.forEach((v) => {
     const category = v.type === 'custom' ? 'homebrew'
+      : v.type === 'prestige' ? 'prestige'
       : v.type === 'peuple' || v.type === 'mage' ? 'own'
       : profilVoies.some((pv) => pv.id === v.voie_id) ? 'own' : 'hybride';
     cards.push(...buildVoieCardChain(v.voie_id, v, category, null));
@@ -248,8 +264,17 @@ export default function LevelUp() {
     cards.push(...buildVoieCardChain(v.id, v, 'hybride', `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`));
   });
 
+  // Voie de prestige (p.39): one per career, only once the character reaches its level. Kept in
+  // its own folded block below the regular cards — a big decision, and up to 52 of them.
+  const ownsPrestige = (character.voies || []).some((v) => v.type === 'prestige');
+  const draftPrestigeId = draftVoieEntries.find((e) => catalogVoie(e.voieId)?.type === 'prestige')?.voieId;
+  const prestigeCards = ownsPrestige ? [] : prestigeVoies
+    .filter((v) => v.capacites?.length > 0 && character.level >= v.niveau_prestige_requis)
+    .flatMap((v) => buildVoieCardChain(v.id, v, 'prestige', `Prestige, rang ${prestigeStartRang(v)}`,
+      draftPrestigeId && draftPrestigeId !== v.id ? 'Une seule voie de prestige par carrière' : null));
+
   // Point orphelin (p.42) : réservé au cas où aucune autre capacité n'est accessible.
-  const hasOtherOption = cards.length > 0;
+  const hasOtherOption = cards.length > 0 || prestigeCards.length > 0;
   ORPHAN_CHOICES.forEach((o) => cards.push({
     key: `orphan-${o.choice}`, kind: 'orphan', choice: o.choice, name: o.name,
     subtitle: 'Point orphelin', category: 'orphelin', rang: 1, cost: 1,
@@ -400,13 +425,13 @@ export default function LevelUp() {
           }
           continue;
         }
-        let rang = (character.voies || []).find((v) => v.voie_id === entry.voieId)?.rang || 0;
+        let rang = realRangOf(entry.voieId);
         if (rang === 0) {
           // eslint-disable-next-line no-await-in-loop
           await addCharacterVoie(character.id, { voie_id: entry.voieId, obtained_at_level: character.level });
-          rang = 1;
+          rang = baseRangOf(entry.voieId) + 1;
         }
-        const targetRang = ((character.voies || []).find((v) => v.voie_id === entry.voieId)?.rang || 0) + entry.count;
+        const targetRang = baseRangOf(entry.voieId) + entry.count;
         for (let i = rang; i < targetRang; i++) {
           // eslint-disable-next-line no-await-in-loop
           await raiseCharacterVoieRang(character.id, entry.voieId);
@@ -422,6 +447,17 @@ export default function LevelUp() {
       setSaving(false);
     }
   };
+
+  const renderCard = (card) => (
+    <AugmentCard
+      key={card.key}
+      card={card}
+      disabled={saving || card.picked || (effectivePoints < card.cost && !card.locked)}
+      pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : (card.picked ? 1 : 0)}
+      onPick={pickCard}
+      onRemove={removeDraftEntry}
+    />
+  );
 
   return (
     <div className="p-6 max-w-6xl mx-auto flex flex-col gap-5">
@@ -488,18 +524,32 @@ export default function LevelUp() {
               Tous les points de ce niveau sont dépensés.
             </div>
           ) : (
-            <div className="flex gap-4 flex-wrap">
-              {cards.map((card) => (
-                <AugmentCard
-                  key={card.key}
-                  card={card}
-                  disabled={saving || card.picked || (effectivePoints < card.cost && !card.locked)}
-                  pickedCount={card.kind === 'orphan' ? draftCountForOrphan(card.choice) : (card.picked ? 1 : 0)}
-                  onPick={pickCard}
-                  onRemove={removeDraftEntry}
-                />
-              ))}
-            </div>
+            <>
+              <div className="flex gap-4 flex-wrap">
+                {cards.map(renderCard)}
+              </div>
+              {prestigeCards.length > 0 && (
+                <div className="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-4 flex flex-col gap-3">
+                  <button type="button" onClick={() => setShowPrestige(!showPrestige)} className="flex items-center justify-between gap-2 text-left">
+                    <span className="cof-display font-semibold text-[var(--accent-ink)]">👑 Voie de prestige</span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      {new Set(prestigeCards.map((c) => c.voieId)).size} accessibles {showPrestige ? '▲' : '▼'}
+                    </span>
+                  </button>
+                  {showPrestige && (
+                    <>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Une seule dans toute la carrière, à choisir avec ton MJ : elle s'ouvre directement à son
+                        premier rang (4 en général) pour 2 points, puis progresse comme les autres voies.
+                      </p>
+                      <div className="flex gap-4 flex-wrap">
+                        {prestigeCards.map(renderCard)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex justify-end">
