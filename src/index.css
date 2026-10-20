@@ -126,6 +126,15 @@ h2,
 }
 
 /* Board: whoever currently has the initiative turn (BoardCanvas.jsx's Token/HudCard). */
+/* Projector "Au tour de…" banner: drops in again on every turn change (keyed by the pawn). */
+.turn-banner {
+  animation: turn-banner-in 0.45s ease-out;
+}
+@keyframes turn-banner-in {
+  from { opacity: 0; transform: translate(-50%, -120%); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 @keyframes turn-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(217, 164, 65, 0.7); }
   50% { box-shadow: 0 0 0 6px rgba(217, 164, 65, 0); }

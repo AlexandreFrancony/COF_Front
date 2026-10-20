@@ -408,9 +408,9 @@ export function resolveAvatar(entry) {
 // for the GM's own view of that pawn. player_hp_label (never stripped) is the GM's opt-in
 // replacement a player sees instead — a small static badge, not a bar, since there's nothing
 // numeric behind it for them.
-function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, onContextMenu = null, size = 40, exiting = false, labelsVisible = true }) {
+function Token({ token, isGm, draggable = isGm, selected, active, gridSize, onSelect, onDragEnd, onContextMenu = null, size = 40, exiting = false, labelsVisible = true }) {
   const { ref, handlePointerDown } = usePositionDrag(
-    isGm && !exiting, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
+    draggable && !exiting, token.x, token.y, (x, y) => onDragEnd(token.id, x, y), gridSize
   );
   const { imageUrl, emoji } = resolveAvatar(token);
   const hasHp = token.hp_max != null;
@@ -439,7 +439,7 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, o
         e.stopPropagation();
         onContextMenu(token, e.clientX, e.clientY);
       } : undefined}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${isGm && !exiting ? '' : 'cursor-pointer'}`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-10 ${exiting ? 'token-exit pointer-events-none' : 'token-enter'} ${draggable && !exiting ? '' : 'cursor-pointer'}`}
       style={{ left: `${token.x}%`, top: `${token.y}%`, width: size, height: size }}
     >
       {/* onPointerDown (and the move cursor) live here, not on the root — dragging only
@@ -448,7 +448,7 @@ function Token({ token, isGm, selected, active, gridSize, onSelect, onDragEnd, o
           for selection. */}
       <div
         onPointerDown={handlePointerDown}
-        className={`w-full h-full rounded-full border-2 shadow-lg bg-cover bg-center flex items-center justify-center ${isGm && !exiting ? 'cursor-move' : ''} ${
+        className={`w-full h-full rounded-full border-2 shadow-lg bg-cover bg-center flex items-center justify-center ${draggable && !exiting ? 'cursor-move' : ''} ${
           selected ? 'border-white ring-2 ring-[var(--accent)]' : 'border-white/80'
         } ${(isGm && !token.visible_to_players) || destroyed ? 'opacity-40' : ''} ${active ? 'turn-active' : ''}`}
         style={{
@@ -812,6 +812,7 @@ export default function BoardCanvas({
   fogMode = false, fogBrushMode = 'reveal', fogBrushRadius = 2, onFogPaint = () => {},
   drawMode = false, drawColor = '#ef4444', onDraw = () => {},
   selectedTokenIds = null, onTokenContextMenu = null, onMarqueeSelect = null, onDropItem = null,
+  canDragToken = null,
 }) {
   const isVideo = board.background_type === 'video' && board.background_url;
   const sceneStyle = cameraCrop ? cameraCropStyle(board) : { position: 'absolute', inset: 0 };
@@ -977,6 +978,7 @@ export default function BoardCanvas({
             key={token.id}
             token={token}
             isGm={isGm}
+            draggable={isGm || !!canDragToken?.(token)}
             selected={isSelected(token)}
             active={token.id === activeTokenId}
             gridSize={board.grid_visible ? board.grid_size : null}

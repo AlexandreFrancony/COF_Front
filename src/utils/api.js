@@ -273,6 +273,10 @@ export const createBoardToken = (campaignId, data) =>
   request(`/campaigns/${campaignId}/board/tokens`, { method: 'POST', body: JSON.stringify(data) });
 export const updateBoardToken = (tokenId, data) =>
   request(`/board/tokens/${tokenId}`, { method: 'PATCH', body: JSON.stringify(data) });
+// A player moving their own pawn or a creature they own (golem, familiar), or changing that
+// creature's PV — the server only accepts { x, y, hp_delta } there, and only on what's theirs.
+export const updateOwnBoardToken = (tokenId, data) =>
+  request(`/board/tokens/${tokenId}/player`, { method: 'PATCH', body: JSON.stringify(data) });
 export const deleteBoardToken = (tokenId) =>
   request(`/board/tokens/${tokenId}`, { method: 'DELETE' });
 

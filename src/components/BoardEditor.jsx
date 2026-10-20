@@ -6,6 +6,7 @@ import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
 import Kbd from './Kbd';
 import { getMonstres, updateMonstre, uploadMonstreImage } from '../utils/api';
+import { hpDelta, parseHpInput } from '../utils/hp';
 
 const ZONE_SHAPES = [
   ['circle', 'Cercle'],
@@ -45,16 +46,6 @@ const STATUS_PRESETS = [
   ['🤢', 'Empoisonné'], ['🔥', 'Enflammé'], ['💫', 'Étourdi'],
   ['😱', 'Effrayé'], ['⛓️', 'Entravé'], ['🛌', 'À terre'],
 ];
-
-// "12" = 12 damage (the common case at the table), "-12" the same, "+5" heals 5, "=20" sets the
-// PV to 20. Returns null for anything else so a typo never silently changes a pawn's life.
-export function parseHpInput(text) {
-  const m = String(text).trim().match(/^([+=-]?)\s*(\d+)$/);
-  if (!m) return null;
-  const n = Number(m[2]);
-  if (m[1] === '=') return { set: n };
-  return { delta: m[1] === '+' ? n : -n };
-}
 
 const LIBRARY_TABS = [
   ['ennemis', '🗡️ Ennemis'],
@@ -292,8 +283,8 @@ export default function BoardEditor({
     for (const item of items) await fn(item);
   };
 
-  const applyHp = (tokens, { delta, set }) => runEach(tokens, (t) => {
-    const d = set != null ? set - t.hp_current : delta;
+  const applyHp = (tokens, parsed) => runEach(tokens, (t) => {
+    const d = hpDelta(parsed, t.hp_current);
     return d ? onTokenHpChange(t.id, d) : null;
   });
 

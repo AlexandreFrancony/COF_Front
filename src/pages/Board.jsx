@@ -7,6 +7,7 @@ import BoardEditor from '../components/BoardEditor';
 import NotesPanel from '../components/NotesPanel';
 import CharacterSummaryCard from '../components/CharacterSummaryCard';
 import CreatureSummaryCard from '../components/CreatureSummaryCard';
+import PlayerCharacterPanel from '../components/PlayerCharacterPanel';
 import InitiativeTracker from '../components/InitiativeTracker';
 import { usePings } from '../hooks/usePings';
 import {
@@ -17,7 +18,7 @@ import {
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
   updateBoardFog, updateBoardHandout, addBoardDrawing, undoLastBoardDrawing, clearBoardDrawings,
   newBoardScene,
-  getCampaignScenarios, launchScenario,
+  getCampaignScenarios, launchScenario, updateOwnBoardToken,
 } from '../utils/api';
 
 export default function Board() {
@@ -441,6 +442,16 @@ export default function Board() {
   // Re-derived from the live board (not stored as the clicked object) so the player-side
   // summary card keeps tracking PV/PM as they change via SSE instead of freezing on selection.
   const selectedToken = board.tokens.find((t) => t.id === selectedTokenId) || null;
+  // A player's GET /characters only returns their own characters.
+  const myIds = new Set(isGm ? [] : characters.map((c) => c.id));
+  const isMine = (t) => myIds.has(t.character_id) || (t.character_id == null && myIds.has(t.owner_character_id));
+  const sendOwn = async (tokenId, data) => {
+    try {
+      setBoard(await updateOwnBoardToken(tokenId, data));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -555,13 +566,25 @@ export default function Board() {
               drawMode={playerDrawArmed}
               drawColor={playerDrawColor}
               onDraw={handleDraw}
+              canDragToken={isMine}
+              onTokenDragEnd={(tokenId, x, y) => sendOwn(tokenId, { x, y })}
             />
             <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
-              {selectedToken?.character_id ? (
+              {myIds.size > 0 && (
+                <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
+                  <PlayerCharacterPanel
+                    board={board}
+                    characters={characters}
+                    myCharacterIds={myIds}
+                    onCreatureHp={(token, delta) => sendOwn(token.id, { hp_delta: delta })}
+                  />
+                </div>
+              )}
+              {selectedToken && !isMine(selectedToken) && (selectedToken.character_id ? (
                 <CharacterSummaryCard entry={selectedToken} />
-              ) : selectedToken?.hp_max != null ? (
+              ) : selectedToken.hp_max != null ? (
                 <CreatureSummaryCard entry={selectedToken} />
-              ) : null}
+              ) : null)}
               <div className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] h-fit">
                 <NotesPanel campaignId={campaignId} />
               </div>
