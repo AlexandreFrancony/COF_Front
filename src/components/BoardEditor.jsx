@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import BoardCanvas, { BOARD_DRAG_MIME, FOG_COLS, FOG_ROWS } from './BoardCanvas';
+import BoardCanvas, { BOARD_DRAG_MIME, FOG_COLS, FOG_ROWS, playerSafeBoard } from './BoardCanvas';
 import CharacterSummaryCard from './CharacterSummaryCard';
 import CreatureSummaryCard from './CreatureSummaryCard';
 import InitiativeTracker from './InitiativeTracker';
@@ -196,7 +196,7 @@ export default function BoardEditor({
   onPing, pings = [],
   onUpdateFog, onShowHandout, onHideHandout, onUploadHandoutMedia,
   onDraw, onUndoDrawing, onClearDrawings,
-  onNewScene,
+  onNewScene, scenarios = null, onLaunchScenario, scenesHref,
   hudPlayers = null, hudEnemies = null,
 }) {
   // Ids only (not token objects) — re-derived from the live `board` prop below so the panels keep
@@ -213,6 +213,9 @@ export default function BoardEditor({
   const boardAreaRef = useRef(null);
   const drawerRef = useRef(null);
   const [popover, setPopover] = useState(null);
+  // The GM's own view of exactly what the projector shows (fog opaque, hidden pawns gone, the
+  // camera's framing), without opening the projector tab.
+  const [playerPreview, setPlayerPreview] = useState(false);
   const [uploadingHandout, setUploadingHandout] = useState(false);
   // The library thumbnail is small and cropped (object-cover) — not enough to actually read a
   // letter before deciding to show it. This holds which media is open in the full-size lightbox.
@@ -360,6 +363,7 @@ export default function BoardEditor({
         // preventDefault: the drawer's search field takes the focus, the key must not type a 'b' into it
         case 'b': e.preventDefault(); openLibrary(libraryTab || lastLibraryTab); break;
         case 'v': disarmAll(); break;
+        case 'j': if (withCamera) setPlayerPreview((v) => !v); break;
         case 'escape':
           disarmAll();
           clearSelection();
@@ -367,6 +371,7 @@ export default function BoardEditor({
           setPopover(null);
           setLibraryTab(null);
           setPreviewHandout(null);
+          setPlayerPreview(false);
           break;
         case 'delete':
         case 'backspace':
@@ -536,6 +541,17 @@ export default function BoardEditor({
     setSelectedZone(null);
   };
 
+  const hiddenTokens = board.tokens.filter((t) => !t.visible_to_players && !(t.character_id && !t.is_npc));
+  const selectOnly = (tokens) => { setSelectedZone(null); setCameraSelected(false); setSelectedIds(tokens.map((t) => t.id)); };
+
+  const launchScene = async (scenario, replace) => {
+    if (replace && !window.confirm(`Vider le plateau (pions, zones, brouillard, dessins, document) puis lancer « ${scenario.name} » ?`)) return;
+    setPopover(null);
+    clearSelection();
+    if (replace) await onNewScene();
+    await onLaunchScenario(scenario);
+  };
+
   const actionProps = {
     onHp: applyHp,
     onSetVisible: setVisible,
@@ -591,11 +607,23 @@ export default function BoardEditor({
               : statusChip(false, '📄 Aucun document', () => openLibrary('documents'), 'Montrer un document')}
             {statusChip(board.initiative_visible, `⚔️ Initiative ${board.initiative_visible ? 'visible' : 'cachée'} au projecteur`,
               () => onInitiativeVisibleChange(!board.initiative_visible), 'Afficher / cacher l\'ordre de jeu sur le projecteur')}
+            {statusChip((board.camera_width ?? 100) < 100, `🎥 Projecteur : ${(board.camera_width ?? 100) < 100 ? 'cadré' : 'tout le plateau'}`,
+              () => { setSelectedIds([]); setSelectedZone(null); setCameraSelected(true); }, 'Régler ce que montre le projecteur')}
+            {hiddenTokens.length > 0 && statusChip(true, `🙈 ${hiddenTokens.length} pion${hiddenTokens.length > 1 ? 's' : ''} caché${hiddenTokens.length > 1 ? 's' : ''}`,
+              () => selectOnly(hiddenTokens), 'Sélectionner les pions cachés (puis H pour les montrer)')}
           </>
+        )}
+        {scenarios && (
+          <button
+            onClick={() => setPopover((p) => (p === 'scenes' ? null : 'scenes'))}
+            className={`ml-auto px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${popover === 'scenes' ? active : 'border-[var(--border)]'}`}
+          >
+            🎬 Scènes ({scenarios.length})
+          </button>
         )}
         <button
           onClick={() => openLibrary(libraryTab || lastLibraryTab)}
-          className={`ml-auto px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${libraryTab ? active : 'border-[var(--border)]'}`}
+          className={`${scenarios ? '' : 'ml-auto '}px-3 py-1.5 text-sm rounded border hover:border-[var(--accent)] ${libraryTab ? active : 'border-[var(--border)]'}`}
         >
           📚 Bibliothèques<Kbd>B</Kbd>
         </button>
@@ -630,6 +658,8 @@ export default function BoardEditor({
               onClick={() => { setSelectedIds([]); setSelectedZone(null); setCameraSelected(true); }}
               title="Régler ce que montre le projecteur" />
           )}
+          {withCamera && <RailButton icon="👁️" label="Joueurs" kbd="J" isActive={playerPreview} onClick={() => setPlayerPreview((v) => !v)}
+            title="Aperçu de ce que voient les joueurs au projecteur" />}
           <div className="my-1 border-t border-[var(--border)]" />
           <RailButton icon="#️⃣" label="Grille" kbd="G" isActive={board.grid_visible} onClick={onToggleGrid} title="Afficher / masquer la grille" />
           <RailButton icon="🏷️" label="Noms" kbd="L" isActive={board.labels_visible !== false} onClick={onToggleLabels}
@@ -755,6 +785,41 @@ export default function BoardEditor({
               </div>
             </div>
           )}
+
+          {popover === 'scenes' && scenarios && (
+            <div className="absolute top-2 right-2 z-50 w-80 max-h-[80%] overflow-y-auto flex flex-col gap-2 p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">🎬 Scènes préparées</span>
+                {scenesHref && <a href={scenesHref} className="text-xs text-[var(--accent)] hover:underline">Préparer…</a>}
+              </div>
+              {scenarios.length === 0 ? (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Aucune scène préparée. Crée-les depuis la page de la campagne (Scénarios) : fond, pions et zones, prêts à lancer d'un clic.
+                </p>
+              ) : scenarios.map((sc) => (
+                <div key={sc.id} className="flex items-center gap-1.5 p-2 rounded border border-[var(--border)]">
+                  <span className="flex-1 min-w-0 truncate" title={sc.name}>{sc.name}</span>
+                  <button onClick={() => launchScene(sc, false)} title="Ajoute le fond, les pions et les zones de la scène au plateau actuel"
+                    className="px-2 py-1 text-xs rounded border border-[var(--border)] hover:border-[var(--accent)]">➕ Ajouter</button>
+                  <button onClick={() => launchScene(sc, true)} title="Vide le plateau puis lance la scène"
+                    className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">🔄 Remplacer</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {playerPreview && (() => {
+            const safe = playerSafeBoard(board);
+            return (
+              <div className="absolute inset-0 z-[55] rounded-lg overflow-hidden bg-black cursor-pointer" onClick={() => setPlayerPreview(false)}>
+                <BoardCanvas board={safe} isGm={false} className="absolute inset-0" style={{ backgroundColor: 'black' }}
+                  hudPlayers={safe.tokens.filter((t) => t.character_id && !t.is_npc)} cameraCrop pings={pings} />
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-[60] px-3 py-1 text-xs rounded-full bg-black/70 text-white pointer-events-none whitespace-nowrap">
+                  👁️ Ce que voient les joueurs au projecteur · clic ou J pour revenir
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Libraries slide over the board's right side instead of pushing the board down; while
               something is being dragged out of them they fade away so the whole board is a target. */}
@@ -1093,7 +1158,15 @@ export default function BoardEditor({
                 </p>
               ) : scenePawns.map(([title, tokens]) => tokens.length > 0 && (
                 <div key={title} className="flex flex-col gap-1">
-                  <span className="text-xs text-[var(--text-secondary)]">{title} ({tokens.length})</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs text-[var(--text-secondary)]">{title} ({tokens.length})</span>
+                    {title === 'Cachés' && (
+                      <span className="flex gap-1">
+                        <button onClick={() => selectOnly(tokens)} className="px-1.5 py-0.5 text-[10px] rounded border border-[var(--border)] hover:border-[var(--accent)]">Sélectionner</button>
+                        <button onClick={() => setVisible(tokens, true)} className="px-1.5 py-0.5 text-[10px] rounded border border-[var(--border)] hover:border-[var(--accent)]">👁️ Tout montrer</button>
+                      </span>
+                    )}
+                  </div>
                   {tokens.map((t) => (
                     <div key={t.id} className="flex items-center gap-1">
                       <button onClick={(e) => selectToken(t, e)} className="flex-1 min-w-0 text-left px-2 py-1 text-sm rounded hover:bg-[var(--bg-input)] truncate">

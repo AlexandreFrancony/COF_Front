@@ -11,6 +11,33 @@ const STAGE_STYLE = {
   height: `min(100cqh, ${100 / BOARD_ASPECT_RATIO}cqw)`,
 };
 
+// Same fields board.js's own stripEnemyStats nulls out for a player-role fetch — kept in sync
+// by hand since this path never actually calls the backend as a player (see below).
+const HIDDEN_CREATURE_FIELDS = [
+  'hp_current', 'hp_max',
+  'monstre_name', 'monstre_category', 'monstre_nc', 'monstre_defense',
+  'monstre_initiative', 'monstre_attaques', 'monstre_caracteristiques', 'monstre_capacites',
+];
+
+// The projector is opened from the GM's own logged-in browser (a second tab/window cast to a TV), so
+// the backend sees a GM-role request and returns the unfiltered board — hidden tokens/zones
+// and enemy stats included. The projector is exactly the screen players are meant to watch,
+// so it applies the same player-facing filtering itself instead of trusting the fetch's role.
+export function playerSafeBoard(board) {
+  return {
+    ...board,
+    tokens: board.tokens
+      .filter((t) => t.visible_to_players)
+      .map((t) => {
+        if (!t.hide_hp_from_players) return t;
+        const stripped = { ...t };
+        for (const field of HIDDEN_CREATURE_FIELDS) stripped[field] = null;
+        return stripped;
+      }),
+    zones: board.zones.filter((z) => z.visible_to_players),
+  };
+}
+
 // Fog of war's own grid — independent from the tactical grid_size the GM sets for movement, and
 // never adjustable: fine enough for a paintbrush without needing a real bitmap. 40 cols x 23
 // rows renders as near-square cells at 16:9 (close enough for a brush, no need to be exact).

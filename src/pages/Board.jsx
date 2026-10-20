@@ -17,6 +17,7 @@ import {
   setBoardInitiativeVisible, nextInitiativeTurn, resetInitiative,
   updateBoardFog, updateBoardHandout, addBoardDrawing, undoLastBoardDrawing, clearBoardDrawings,
   newBoardScene,
+  getCampaignScenarios, launchScenario,
 } from '../utils/api';
 
 export default function Board() {
@@ -26,6 +27,7 @@ export default function Board() {
   const [board, setBoard] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [mediaLibrary, setMediaLibrary] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
   // id only (not the token object) — re-derived from the live `board` below so the card keeps
   // reflecting PV/PM as they change via SSE instead of freezing at the moment it was clicked.
   const [selectedTokenId, setSelectedTokenId] = useState(null);
@@ -53,8 +55,22 @@ export default function Board() {
   }, [campaignId]);
 
   useEffect(() => {
-    if (isGm) getBoardMedia().then(setMediaLibrary).catch(() => {});
-  }, [isGm]);
+    if (!isGm) return;
+    getBoardMedia().then(setMediaLibrary).catch(() => {});
+    getCampaignScenarios(campaignId).then(setScenarios).catch(() => {});
+  }, [isGm, campaignId]);
+
+  // A prepared scene (Campagne > Scénarios) launched straight from the board: the backend adds
+  // its background, pawns and zones and broadcasts the new board to every screen.
+  const handleLaunchScenario = async (scenario) => {
+    try {
+      const { tokens_added, zones_added } = await launchScenario(scenario.id);
+      setBoard(await getBoard(campaignId));
+      toast.success(`« ${scenario.name} » lancée : ${tokens_added} pion(s), ${zones_added} zone(s)`);
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
 
   useEffect(() => {
     const source = new EventSource(getBoardStreamUrl(campaignId));
@@ -480,6 +496,9 @@ export default function Board() {
           onUndoDrawing={handleUndoDrawing}
           onClearDrawings={handleClearDrawings}
           onNewScene={handleNewScene}
+          scenarios={scenarios}
+          onLaunchScenario={handleLaunchScenario}
+          scenesHref={`/campaigns/${campaignId}`}
           onAddZone={handleAddZone}
           onMoveZone={handleZoneDragEnd}
           onPatchZone={handlePatchZone}

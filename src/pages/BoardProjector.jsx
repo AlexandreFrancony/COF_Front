@@ -1,40 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import BoardCanvas from '../components/BoardCanvas';
+import BoardCanvas, { playerSafeBoard } from '../components/BoardCanvas';
 import InitiativeTracker from '../components/InitiativeTracker';
 import { usePings } from '../hooks/usePings';
 import { getBoard, getBoardStreamUrl } from '../utils/api';
 
-// Same fields board.js's own stripEnemyStats nulls out for a player-role fetch — kept in sync
-// by hand since this path never actually calls the backend as a player (see below).
-const HIDDEN_CREATURE_FIELDS = [
-  'hp_current', 'hp_max',
-  'monstre_name', 'monstre_category', 'monstre_nc', 'monstre_defense',
-  'monstre_initiative', 'monstre_attaques', 'monstre_caracteristiques', 'monstre_capacites',
-];
-
-// This is opened from the GM's own logged-in browser (a second tab/window cast to a TV), so
-// the backend sees a GM-role request and returns the unfiltered board — hidden tokens/zones
-// and enemy stats included. The projector is exactly the screen players are meant to watch,
-// so it applies the same player-facing filtering itself instead of trusting the fetch's role.
-function playerSafeBoard(board) {
-  return {
-    ...board,
-    tokens: board.tokens
-      .filter((t) => t.visible_to_players)
-      .map((t) => {
-        if (!t.hide_hp_from_players) return t;
-        const stripped = { ...t };
-        for (const field of HIDDEN_CREATURE_FIELDS) stripped[field] = null;
-        return stripped;
-      }),
-    zones: board.zones.filter((z) => z.visible_to_players),
-  };
-}
-
 // Fullscreen, read-only board — meant to be cast to a TV or vidéoprojecteur during a session.
 // No header, no controls: just the background, grid, zones, visible tokens, and the party's
-// HUD (never the enemies' — see playerSafeBoard above). cameraCrop makes it show only the
+// HUD (never the enemies' — see playerSafeBoard in BoardCanvas.jsx). cameraCrop makes it show only the
 // GM's chosen window of the scene (board.camera_x/y/width), not the full map — the GM's own
 // Board.jsx view is unaffected and always shows everything.
 export default function BoardProjector() {
