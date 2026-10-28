@@ -161,6 +161,8 @@ export const setCharacterVoieRang = (characterId, voieId, rang) =>
   request(`/characters/${characterId}/voies/${voieId}`, { method: 'PATCH', body: JSON.stringify({ rang }) });
 export const levelUpCharacter = (characterId) =>
   request(`/characters/${characterId}/level-up`, { method: 'POST' });
+export const validateCharacter = (characterId) =>
+  request(`/characters/${characterId}/gm-review`, { method: 'DELETE' });
 export const setPlannedVoies = (characterId, voieIds) =>
   request(`/characters/${characterId}/planned-voies`, { method: 'PUT', body: JSON.stringify({ voie_ids: voieIds }) });
 export const getCapaciteChoices = (characterId, capaciteId) =>

@@ -245,6 +245,11 @@ export default function CampaignDetail() {
                       <span className="text-sm text-[var(--text-secondary)] ml-2">
                         {c.is_npc ? 'PNJ' : c.user_id ? `Niveau ${c.level}` : 'Pas encore invité'}
                       </span>
+                      {isGm && c.gm_review && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full border border-[var(--accent)] text-[var(--accent-ink)]" title={c.gm_review}>
+                          🔎 À valider
+                        </span>
+                      )}
                     </span>
                   </Link>
                   {isGm && (

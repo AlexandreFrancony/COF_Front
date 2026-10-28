@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getCharacter, getProfils, getPeuples, getVoies, getCampaign,
   updateCharacter, addCharacterVoie, setCharacterVoieRang,
-  levelUpCharacter, setPlannedVoies, getCapaciteChoices, resolveCapaciteChoice,
+  levelUpCharacter, setPlannedVoies, validateCharacter, getCapaciteChoices, resolveCapaciteChoice,
   getArmures, createArmure, deleteArmure,
   getArmes, createArme, deleteArme, uploadCharacterAvatar, getCharacterStreamUrl,
 } from '../utils/api';
@@ -479,20 +479,20 @@ export default function CharacterSheet() {
         if (mageVoies.length > 0) setVoieDuMage(mageVoies[0]);
       }
 
-      // Only the GM can build a hybrid from level 1 (a deliberate exception to the normal
-      // creation rules — a player's own creation always follows RAW: 2 voies from their profil).
-      if (isGm) {
-        const [all, custom] = await Promise.all([
-          getVoies({ type: 'profil' }),
-          // Homebrew voies (e.g. Augustin's Voie de transition, Ainee's 6 custom voies) used to
-          // only be pickable after creation (level-up panel) — offered here too now, in the same
-          // "voie hors profil" picker, since a character concept built around one is often known
-          // from the start rather than discovered later.
-          getVoies({ type: 'custom' }),
-        ]);
-        setAllProfilVoies(all);
-        setCustomVoiesForCreation(custom);
-      }
+      // A hybrid from level 1 is an exception to the creation rules: open to players too, but
+      // the backend flags their character (gm_review) for the GM to validate.
+      const [all, custom] = await Promise.all([
+        getVoies({ type: 'profil' }),
+        // Homebrew voies (e.g. Augustin's Voie de transition, Ainee's 6 custom voies) used to
+        // only be pickable after creation (level-up panel) — offered here too now, in the same
+        // "voie hors profil" picker, since a character concept built around one is often known
+        // from the start rather than discovered later. A player only sees the shared ones and
+        // those made for this very character.
+        getVoies({ type: 'custom' }),
+      ]);
+      setAllProfilVoies(all);
+      setCustomVoiesForCreation(isGm ? custom
+        : custom.filter((v) => v.origine_pj_character_id == null || v.origine_pj_character_id === Number(id)));
 
       setStep(4);
     } catch (e) {
@@ -638,8 +638,24 @@ export default function CharacterSheet() {
               {character.origine_humaine && (
                 <p className="text-xs text-[var(--text-secondary)] mt-0.5">Origine : {character.origine_humaine}</p>
               )}
+              {character.gm_review && (
+                <p className="text-xs text-[var(--accent-ink)] mt-0.5">
+                  🔎 {character.gm_review}{isGm ? '' : ' — en attente de validation par le MJ'}
+                </p>
+              )}
             </div>
           </div>
+          {isGm && character.gm_review && (
+            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--accent)] text-sm" title={character.gm_review}>
+              <span>🔎 À valider</span>
+              <button
+                onClick={() => validateCharacter(character.id).then(refreshCharacter).catch((e) => toast.error(e.message))}
+                className="px-2 py-0.5 rounded bg-[var(--accent)] text-white text-xs hover:bg-[var(--accent-hover)]"
+              >
+                Valider
+              </button>
+            </div>
+          )}
           {isGm && (
             <button
               onClick={() => setEditMode((v) => !v)}
@@ -1038,96 +1054,95 @@ export default function CharacterSheet() {
             {' '}Voie de peuple automatique : {peupleVoie?.name || '—'}.
           </p>
 
-          {isGm && (
-            <div className="border-b border-[var(--border)] pb-3 mb-1">
-              <label className="flex items-start gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={hybridCreation}
-                  onChange={(e) => setHybridCreation(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <strong>Personnage hybride ou voie personnalisée dès la création</strong> — exception aux
-                  règles normales (le perso est déjà formé à un autre art au niveau 1, ex. un guerrier-mage,
-                  ou son concept repose sur une voie homebrew). Permet de piocher une des 2 voies de départ
-                  dans un autre profil ou parmi les voies personnalisées.
-                </span>
-              </label>
+          <div className="border-b border-[var(--border)] pb-3 mb-1">
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hybridCreation}
+                onChange={(e) => setHybridCreation(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <strong>Personnage hybride ou voie personnalisée dès la création</strong> — exception aux
+                règles normales (le perso est déjà formé à un autre art au niveau 1, ex. un guerrier-mage,
+                ou son concept repose sur une voie homebrew). Permet de piocher une des 2 voies de départ
+                dans un autre profil ou parmi les voies personnalisées.
+                {!isGm && ' Ton MJ devra valider le personnage.'}
+              </span>
+            </label>
 
-              {hybridCreation && (
-                <>
-                  <div className="mt-2 flex gap-2">
-                    <select
-                      value={hybridPickId}
-                      onChange={(e) => setHybridPickId(e.target.value)}
-                      className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
-                    >
-                      <option value="">— choisir une voie hors profil —</option>
-                      {customVoiesForCreation.length > 0 && (
-                        <optgroup label="Personnalisées (homebrew)">
-                          {customVoiesForCreation.map((v) => (
+            {hybridCreation && (
+              <>
+                <div className="mt-2 flex gap-2">
+                  <select
+                    value={hybridPickId}
+                    onChange={(e) => setHybridPickId(e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border)] text-sm"
+                  >
+                    <option value="">— choisir une voie hors profil —</option>
+                    {customVoiesForCreation.length > 0 && (
+                      <optgroup label="Personnalisées (homebrew)">
+                        {customVoiesForCreation.map((v) => (
+                          <option key={v.id} value={v.id} disabled={selectedVoieIds.includes(v.id)}>
+                            {v.name}{v.origine_pj ? ` — ${v.origine_pj}` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {profils.filter((p) => p.id !== profilId).map((op) => {
+                      const voies = allProfilVoies.filter((v) => v.profil_id === op.id);
+                      if (voies.length === 0) return null;
+                      return (
+                        <optgroup key={op.id} label={op.name}>
+                          {voies.map((v) => (
                             <option key={v.id} value={v.id} disabled={selectedVoieIds.includes(v.id)}>
-                              {v.name}{v.origine_pj ? ` — ${v.origine_pj}` : ''}
+                              {v.name}
                             </option>
                           ))}
                         </optgroup>
-                      )}
-                      {profils.filter((p) => p.id !== profilId).map((op) => {
-                        const voies = allProfilVoies.filter((v) => v.profil_id === op.id);
-                        if (voies.length === 0) return null;
-                        return (
-                          <optgroup key={op.id} label={op.name}>
-                            {voies.map((v) => (
-                              <option key={v.id} value={v.id} disabled={selectedVoieIds.includes(v.id)}>
-                                {v.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!hybridPickId) return;
-                        toggleVoie(Number(hybridPickId));
-                        setHybridPickId('');
-                      }}
-                      disabled={!hybridPickId || selectedVoieIds.length >= 2}
-                      className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-50"
-                    >
-                      Ajouter
-                    </button>
-                  </div>
+                      );
+                    })}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!hybridPickId) return;
+                      toggleVoie(Number(hybridPickId));
+                      setHybridPickId('');
+                    }}
+                    disabled={!hybridPickId || selectedVoieIds.length >= 2}
+                    className="px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:border-[var(--accent)] disabled:opacity-50"
+                  >
+                    Ajouter
+                  </button>
+                </div>
 
-                  {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).map((id) => {
-                        const v = allProfilVoies.find((av) => av.id === id) || customVoiesForCreation.find((cv) => cv.id === id);
-                        const originLabel = v?.profil_id ? profils.find((p) => p.id === v.profil_id)?.name : 'homebrew';
-                        return (
-                          <span
-                            key={id}
-                            className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--accent)] bg-[var(--bg-input)] text-xs"
+                {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedVoieIds.filter((id) => !profilVoies.some((v) => v.id === id)).map((id) => {
+                      const v = allProfilVoies.find((av) => av.id === id) || customVoiesForCreation.find((cv) => cv.id === id);
+                      const originLabel = v?.profil_id ? profils.find((p) => p.id === v.profil_id)?.name : 'homebrew';
+                      return (
+                        <span
+                          key={id}
+                          className="flex items-center gap-1 px-2 py-1 rounded border border-[var(--accent)] bg-[var(--bg-input)] text-xs"
+                        >
+                          {v?.name} ({originLabel})
+                          <button
+                            type="button"
+                            onClick={() => toggleVoie(id)}
+                            className="text-[var(--text-secondary)] hover:text-red-500"
                           >
-                            {v?.name} ({originLabel})
-                            <button
-                              type="button"
-                              onClick={() => toggleVoie(id)}
-                              className="text-[var(--text-secondary)] hover:text-red-500"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {demiElfeChoices && (
             <div className="border-b border-[var(--border)] pb-3 mb-1">
