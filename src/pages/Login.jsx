@@ -41,8 +41,10 @@ export default function Login() {
         <h1 className="text-2xl font-bold text-[var(--accent)] text-center">As I've Written</h1>
 
         <input
-          type="email"
-          placeholder="Email"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          placeholder="Email ou pseudo"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
