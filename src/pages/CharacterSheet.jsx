@@ -12,6 +12,7 @@ import {
 import CapaciteSummary from '../components/CapaciteSummary';
 import { HUMAN_ORIGINS } from '../utils/capaciteChoices';
 import { useStatAdjuster } from '../hooks/useStatAdjuster';
+import { getFacette } from '../utils/facettes';
 
 const CARACS = ['AGI', 'CON', 'FOR', 'PER', 'CHA', 'INT', 'VOL'];
 const CARAC_LABELS = {
@@ -36,32 +37,6 @@ const CARAC_PROFILES = {
   expert: { label: 'Expert', values: [3, 2, 1, 1, 0, 0, -1] },
   specialiste: { label: 'Spécialiste', values: [4, 2, 1, 0, 0, -1, -1] },
 };
-
-// Augustin Moëdec's homebrew schizophrenia — hardcoded to these exact voie_ids, not a general
-// multi-personality system. Voie des artefacts (76) and Voie de transition (139) are common to
-// both facettes (never inactive, absent from both lists below on purpose); Voie du métal (78)
-// and Voie des runes (80) only under the threshold ("calme"); Voie de la magie destructrice (82)
-// and Voie de la magie élémentaire (83) only above it ("mage fou"). Gated on
-// character.custom_data.threshold_percent being set (only true for him), so this is a no-op for
-// every other character.
-const FACETTE_VOIE_GROUPS = { calme: [78, 80], mage: [82, 83] };
-
-// Facette is driven by the character's OWN current/max PM ratio (not the artefact's stored
-// reserve) — above the threshold his magic overflows and he loses himself to it ("facette
-// mage fou"); the artefact (Voie de transition, rang 1) exists precisely so he can bleed PM
-// out of his own body into external storage to stay under the threshold on purpose.
-function getFacette(character) {
-  const threshold = character.custom_data?.threshold_percent;
-  if (threshold == null || !character.pm_max) return null;
-  const percent = (character.pm_current / character.pm_max) * 100;
-  const active = percent >= threshold ? 'mage' : 'calme';
-  return {
-    threshold,
-    percent,
-    active,
-    inactiveVoieIds: FACETTE_VOIE_GROUPS[active === 'mage' ? 'calme' : 'mage'],
-  };
-}
 
 // title/headerAction are optional: omitted, Card renders exactly as before (the creation
 // wizard's own inline <h2> usages stay untouched). Passed, it gets the "livre" plate treatment —
@@ -325,6 +300,7 @@ export default function CharacterSheet() {
   // activity independent of an active level-up.
   const [customVoiesAll, setCustomVoiesAll] = useState([]);
   const [allProfilVoiesAll, setAllProfilVoiesAll] = useState([]);
+  const [prestigeVoiesAll, setPrestigeVoiesAll] = useState([]);
   const [peupleVoie, setPeupleVoie] = useState(null);
   const [demiElfeChoices, setDemiElfeChoices] = useState(null);
   const [voieDuMage, setVoieDuMage] = useState(null);
@@ -389,6 +365,7 @@ export default function CharacterSheet() {
     if (isGm && character?.profil_id && character.pv_max > 0 && allProfilVoiesAll.length === 0) {
       getVoies({ type: 'custom' }).then(setCustomVoiesAll).catch(() => {});
       getVoies({ type: 'profil' }).then(setAllProfilVoiesAll).catch(() => {});
+      getVoies({ type: 'prestige' }).then(setPrestigeVoiesAll).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [character]);
@@ -840,6 +817,7 @@ export default function CharacterSheet() {
                 profils={profils}
                 allProfilVoies={allProfilVoiesAll}
                 customVoies={customVoiesAll}
+                prestigeVoies={prestigeVoiesAll}
                 onRefresh={refreshCharacter}
               />
             )}
@@ -1432,7 +1410,7 @@ function LevelUpBanner({ character, onRefresh }) {
   );
 }
 
-function PlannedVoiesEditor({ character, profils, allProfilVoies, customVoies, onRefresh }) {
+function PlannedVoiesEditor({ character, profils, allProfilVoies, customVoies, prestigeVoies, onRefresh }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(() => new Set(character.planned_voie_ids || []));
   const [saving, setSaving] = useState(false);
@@ -1483,8 +1461,9 @@ function PlannedVoiesEditor({ character, profils, allProfilVoies, customVoies, o
       {open && (
         <>
           <p className="text-xs text-[var(--text-secondary)]">
-            Coche les voies que ce PJ prévoit d'investir (profil, hybride ou homebrew) pour ne proposer que
-            celles-ci en montée de niveau. Aucune coche = toutes les voies éligibles restent proposées.
+            Coche les voies que ce PJ prévoit d'investir (profil, hybride, homebrew ou prestige) pour ne proposer
+            que celles-ci en montée de niveau. Aucune coche = toutes les voies éligibles restent proposées. Une voie
+            de prestige n'apparaît qu'une fois cochée ici, et seulement au niveau qu'elle demande.
           </p>
           {eligibleCustomVoies.length > 0 && (
             <div>
@@ -1520,6 +1499,24 @@ function PlannedVoiesEditor({ character, profils, allProfilVoies, customVoies, o
                 </details>
               );
             })}
+            {prestigeVoies.length > 0 && (
+              <details className="rounded-lg border border-[var(--border)] overflow-hidden">
+                <summary className="px-2 py-1.5 text-sm cursor-pointer hover:bg-[var(--bg-input)]">
+                  👑 Prestige
+                  {prestigeVoies.some((v) => selected.has(v.id)) && (
+                    <span className="text-xs text-[var(--accent)] ml-1">({prestigeVoies.filter((v) => selected.has(v.id)).length})</span>
+                  )}
+                </summary>
+                <div className="flex flex-wrap gap-2 p-2 pt-0">
+                  {prestigeVoies.map((v) => (
+                    <label key={v.id} className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-[var(--border)]">
+                      <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} />
+                      {v.name} <span className="text-xs text-[var(--text-secondary)]">niv. {v.niveau_prestige_requis}</span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
           <StepButton onClick={save} disabled={saving}>
             Enregistrer
@@ -1555,8 +1552,8 @@ function GmEditPanel({ character, profils, peuples, armures, onArmuresChange, ar
     dr_bonus_orphan: character.dr_bonus_orphan,
     pm_bonus_orphan: character.pm_bonus_orphan,
     origine_humaine: character.origine_humaine || '',
-    // Augustin Moëdec's facette threshold (% of PM current/max) — see getFacette() and
-    // FACETTE_VOIE_GROUPS above. Empty for every other character; blank here disables it.
+    // Augustin Moëdec's facette threshold (% of PM current/max) — see utils/facettes.js. Empty
+    // for every other character; blank here disables it.
     facette_threshold_percent: character.custom_data?.threshold_percent ?? '',
   });
 

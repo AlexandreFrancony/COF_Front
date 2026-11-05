@@ -7,6 +7,7 @@ import {
 import { niveauRequisFor, prestigeStartRang } from '../utils/rules';
 import { evolvingDieForLevel } from '../utils/evolvingDice';
 import { computePvBodyGain, computePmMax, costForRang, pvMaxConTerm, flatBonusFor } from '../utils/characterPreview';
+import { FACETTE_META, facetteOfVoie, mageThresholdPm } from '../utils/facettes';
 
 const CATEGORY_META = {
   own: { color: '#C9973E', fallbackIcon: '⚔️' },
@@ -21,6 +22,24 @@ const ORPHAN_CHOICES = [
   { choice: 'dr', name: '+1 Récupération', icon: '💤', description: 'Un dé de récupération supplémentaire.' },
   { choice: 'pv', name: '+2 Vigueur max', icon: '❤️', description: 'Ajouté directement au grand livre de PV.' },
   { choice: 'pm', name: '+2 Mana max', icon: '🔮', description: 'Réserve de mana permanente.' },
+];
+
+const FACETTE_SECTIONS = [
+  {
+    key: 'calme',
+    title: `${FACETTE_META.calme.icon} ${FACETTE_META.calme.label}`,
+    hint: (threshold) => `Utilisables tant que ses PM restent sous ${threshold} % de son mana max.`,
+  },
+  {
+    key: 'mage',
+    title: `${FACETTE_META.mage.icon} ${FACETTE_META.mage.label}`,
+    hint: (threshold) => `Utilisables seulement quand ses PM atteignent ${threshold} % de son mana max.`,
+  },
+  {
+    key: 'commun',
+    title: '⚖️ Commun aux deux facettes',
+    hint: () => 'Toujours utilisables, quelle que soit la facette.',
+  },
 ];
 
 function rarityFor(rang) {
@@ -264,14 +283,18 @@ export default function LevelUp() {
     cards.push(...buildVoieCardChain(v.id, v, 'hybride', `Hybride — ${profils.find((p) => p.id === v.profil_id)?.name}`));
   });
 
-  // Voie de prestige (p.39): one per career, only once the character reaches its level. Kept in
-  // its own folded block below the regular cards — a big decision, and up to 52 of them.
+  // Voie de prestige (p.39): one per career, only once the character reaches its level, and only
+  // the ones the GM ticked in the roadmap — the GM has the last word on opening one (p.42), and
+  // without that every level-3 PJ was offered the familier fantastique (its rangs start at 3).
+  // Kept in its own folded block below the regular cards — a big decision.
   const ownsPrestige = (character.voies || []).some((v) => v.type === 'prestige');
   const draftPrestigeId = draftVoieEntries.find((e) => catalogVoie(e.voieId)?.type === 'prestige')?.voieId;
   const prestigeCards = ownsPrestige ? [] : prestigeVoies
-    .filter((v) => v.capacites?.length > 0 && character.level >= v.niveau_prestige_requis)
+    .filter((v) => v.capacites?.length > 0 && character.level >= v.niveau_prestige_requis && plannedVoieIds.has(v.id))
     .flatMap((v) => buildVoieCardChain(v.id, v, 'prestige', `Prestige, rang ${prestigeStartRang(v)}`,
       draftPrestigeId && draftPrestigeId !== v.id ? 'Une seule voie de prestige par carrière' : null));
+
+  const prestigeCount = new Set(prestigeCards.map((c) => c.voieId)).size;
 
   // Point orphelin (p.42) : réservé au cas où aucune autre capacité n'est accessible.
   const hasOtherOption = cards.length > 0 || prestigeCards.length > 0;
@@ -347,8 +370,29 @@ export default function LevelUp() {
   });
 
   const pmBonusOrphanDraft = draftCountForOrphan('pm') * 2;
-  const previewPmMax = computePmMax(effectiveSortsCount(), character.caracteristiques.VOL) + character.pm_bonus_orphan
-    + pmBonusOrphanDraft + flatBonusFor(draftCapaciteEffects, 'pm_max');
+
+  // Augustin's facettes (utils/facettes.js): only one facette's voies are usable at a time, so his
+  // PM max is computed per facette and the higher one kept — same as the backend. Shown per
+  // facette here, since a pick in one facette moves the PM level at which he tips into the other.
+  const facetteThreshold = character.custom_data?.threshold_percent ?? null;
+  const facettePmMax = (facette, voieIds, rangOf, effects, orphanPm) => computePmMax(
+    [...voieIds].reduce((count, voieId) => {
+      const group = facetteOfVoie(voieId);
+      if (group !== 'commun' && group !== facette) return count;
+      const caps = catalogVoie(voieId)?.capacites || [];
+      return count + caps.filter((c) => c.rang <= rangOf(voieId) && c.est_sort).length;
+    }, 0),
+    character.caracteristiques.VOL,
+  ) + character.pm_bonus_orphan + orphanPm + flatBonusFor(effects, 'pm_max');
+  const facettePm = facetteThreshold == null ? null : Object.fromEntries(['calme', 'mage'].map((f) => [f, {
+    before: facettePmMax(f, realOwnedVoieIds, realRangOf, currentCapaciteEffects, 0),
+    after: facettePmMax(f, effectiveOwnedVoieIds, effectiveRang, draftCapaciteEffects, pmBonusOrphanDraft),
+  }]));
+
+  const previewPmMax = facettePm
+    ? Math.max(facettePm.calme.after, facettePm.mage.after)
+    : computePmMax(effectiveSortsCount(), character.caracteristiques.VOL) + character.pm_bonus_orphan
+      + pmBonusOrphanDraft + flatBonusFor(draftCapaciteEffects, 'pm_max');
   // Défense/initiative aren't a per-level ledger like pv_max — the backend recomputes them
   // instantly after every single voie mutation, not just once a level's points are all spent —
   // so the preview reacts to the draft immediately too, as a delta over the character's current
@@ -478,7 +522,17 @@ export default function LevelUp() {
           <h2 className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">Ce qui évolue</h2>
           <div className="flex flex-col gap-2.5">
             {statRow('Vigueur max', '❤️', initialStats.pv_max, previewPvMax)}
-            {statRow('Mana max', '🔮', initialStats.pm_max, previewPmMax)}
+            {facettePm ? (
+              <>
+                {statRow(`Mana ${FACETTE_META.calme.label}`, FACETTE_META.calme.icon, facettePm.calme.before, facettePm.calme.after)}
+                {statRow(`Mana ${FACETTE_META.mage.label}`, FACETTE_META.mage.icon, facettePm.mage.before, facettePm.mage.after)}
+                {statRow('Bascule dès', '⚖️',
+                  `${mageThresholdPm(facetteThreshold, initialStats.pm_max)} PM`, `${mageThresholdPm(facetteThreshold, previewPmMax)} PM`)}
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Il passe en {FACETTE_META.mage.label} quand ses PM atteignent {facetteThreshold} % de son mana max.
+                </p>
+              </>
+            ) : statRow('Mana max', '🔮', initialStats.pm_max, previewPmMax)}
             {statRow('Chance', '🍀', initialStats.points_chance, previewChance)}
             {statRow('Défense', '🛡️', initialStats.defense, previewDefense)}
             {statRow('Initiative', '⚡', initialStats.initiative, previewInitiative)}
@@ -525,21 +579,37 @@ export default function LevelUp() {
             </div>
           ) : (
             <>
-              <div className="flex gap-4 flex-wrap">
-                {cards.map(renderCard)}
-              </div>
+              {facetteThreshold == null ? (
+                <div className="flex gap-4 flex-wrap">
+                  {cards.map(renderCard)}
+                </div>
+              ) : FACETTE_SECTIONS.map((section) => {
+                const sectionCards = cards.filter((c) => (c.kind === 'voie' ? facetteOfVoie(c.voieId) : 'commun') === section.key);
+                if (sectionCards.length === 0) return null;
+                return (
+                  <div key={section.key} className="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-4 flex flex-col gap-3">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="cof-display font-semibold text-[var(--accent-ink)]">{section.title}</span>
+                      <span className="text-xs text-[var(--text-secondary)]">{section.hint(facetteThreshold)}</span>
+                    </div>
+                    <div className="flex gap-4 flex-wrap">
+                      {sectionCards.map(renderCard)}
+                    </div>
+                  </div>
+                );
+              })}
               {prestigeCards.length > 0 && (
                 <div className="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] p-4 flex flex-col gap-3">
                   <button type="button" onClick={() => setShowPrestige(!showPrestige)} className="flex items-center justify-between gap-2 text-left">
                     <span className="cof-display font-semibold text-[var(--accent-ink)]">👑 Voie de prestige</span>
                     <span className="text-xs text-[var(--text-secondary)]">
-                      {new Set(prestigeCards.map((c) => c.voieId)).size} accessibles {showPrestige ? '▲' : '▼'}
+                      {prestigeCount} accessible{prestigeCount > 1 ? 's' : ''} {showPrestige ? '▲' : '▼'}
                     </span>
                   </button>
                   {showPrestige && (
                     <>
                       <p className="text-xs text-[var(--text-secondary)]">
-                        Une seule dans toute la carrière, à choisir avec ton MJ : elle s'ouvre directement à son
+                        Une seule dans toute la carrière, ouverte par ton MJ : elle commence directement à son
                         premier rang (4 en général) pour 2 points, puis progresse comme les autres voies.
                       </p>
                       <div className="flex gap-4 flex-wrap">
